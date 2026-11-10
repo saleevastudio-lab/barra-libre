@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { CATEGORIES, SERVICE_TYPES } from '@/lib/catalog';
+import { CATEGORIES, SERVICE_TYPES, DEFAULT_EVENT } from '@/lib/catalog';
 import type {
   Drink,
   EventData,
@@ -31,7 +31,7 @@ import { DrinksSection } from '@/sections/DrinksSection';
 import { SettingsDialog } from '@/sections/SettingsDialog';
 import { HistorySection } from '@/sections/HistorySection';
 import { Notice, ViewHeader, eur } from '@/views/ui';
-import { Send, Settings } from 'lucide-react';
+import { Send, Settings, Eraser } from 'lucide-react';
 
 type CategoryFilter = 'all' | Drink['category'];
 
@@ -52,6 +52,7 @@ export function SupervisorView() {
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory());
   const [filter, setFilter] = useState<CategoryFilter>('all');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,6 +100,15 @@ export function SupervisorView() {
   function removeDrink(drinkId: string) {
     setDrinks((prev) => prev.filter((d) => d.id !== drinkId));
     setLines((prev) => prev.filter((l) => l.drinkId !== drinkId));
+  }
+
+  /** Pone a cero el evento y las cantidades (catálogo y costes se conservan). */
+  function handleClear() {
+    const today = new Date().toISOString().slice(0, 10);
+    setEvent({ ...DEFAULT_EVENT, fecha: today });
+    setLines([]);
+    setClearOpen(false);
+    flash('Contenido limpiado: evento y cantidades a cero.');
   }
 
   async function handleSend() {
@@ -163,6 +173,13 @@ export function SupervisorView() {
             <span className="font-data text-xs text-muted-foreground uppercase">
               {usedCount} art.
             </span>
+            <button
+              onClick={() => setClearOpen(true)}
+              aria-label="Limpiar contenido del evento"
+              className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
+            >
+              <Eraser className="h-4 w-4" />
+            </button>
             <button
               onClick={() => setSettingsOpen(true)}
               aria-label="Configuración de Telegram"
@@ -266,6 +283,70 @@ export function SupervisorView() {
           saveSettings(s);
         }}
       />
+
+      <ClearDialog
+        open={clearOpen}
+        onClose={() => setClearOpen(false)}
+        onConfirm={handleClear}
+      />
+    </div>
+  );
+}
+
+/** Confirma antes de limpiar el evento y las cantidades del supervisor. */
+function ClearDialog({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="Confirmar limpieza"
+        className="w-full max-w-sm border border-border bg-background p-4 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="font-data text-xs uppercase tracking-widest text-destructive">
+          Limpiar contenido
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Se pondrán a cero todas las cantidades y se vaciarán los datos del
+          evento (grupo, fecha y tipo de servicio). Los artículos y costes del
+          catálogo se conservan.
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onConfirm}
+            className="h-10 px-4 bg-destructive text-destructive-foreground font-data text-xs uppercase tracking-wide font-bold hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            Limpiar
+          </button>
+          <button
+            onClick={onClose}
+            className="h-10 px-4 border border-border font-data text-xs uppercase tracking-wide hover:bg-foreground hover:text-background transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
