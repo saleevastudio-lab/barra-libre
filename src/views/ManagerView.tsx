@@ -26,6 +26,7 @@ export function ManagerView() {
   const [event, setEvent] = useState<EventData>(() => ({
     ...DEFAULT_EVENT,
     ...(shared ? { grupo: shared.grupo, fecha: shared.fecha || DEFAULT_EVENT.fecha } : {}),
+    ...(shared?.tipoServicio ? { tipoServicio: shared.tipoServicio } : {}),
   }));
   const [lines, setLines] = useState<OrderLine[]>(() => shared?.lines ?? []);
   const [drinks, setDrinks] = useState<Drink[]>(() => shared?.drinks ?? []);
@@ -39,6 +40,7 @@ export function ManagerView() {
       ...prev,
       grupo: shared.grupo,
       fecha: shared.fecha || prev.fecha,
+      ...(shared.tipoServicio ? { tipoServicio: shared.tipoServicio } : {}),
     }));
     setLines(shared.lines);
     setDrinks(shared.drinks);
@@ -107,7 +109,7 @@ export function ManagerView() {
     return (
       <div className="min-h-[100dvh] bg-background text-foreground">
         <ViewHeader
-          title="Barra libre"
+          title="Consumiciones"
           subtitle="Manager"
           right={
             <Link
@@ -143,7 +145,7 @@ export function ManagerView() {
   return (
     <div className="min-h-[100dvh] bg-background text-foreground pb-32">
       <ViewHeader
-        title="Barra libre"
+        title="Consumiciones"
         subtitle="Manager · cierre de evento"
         right={
           <>
