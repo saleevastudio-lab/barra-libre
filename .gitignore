@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+.playwright-cli
+.test
+
+# Binarios generados por scripts/gen-assets.mjs (antes de dev/build)
+public/barra-libre-template.xlsm
+public/icons/*.png
