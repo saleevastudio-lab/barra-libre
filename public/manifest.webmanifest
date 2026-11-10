@@ -1,6 +1,6 @@
 {
-  "name": "Barra libre — Consumición de evento",
-  "short_name": "Barra libre",
+  "name": "Consumiciones",
+  "short_name": "Consumiciones",
   "description": "Registro de consumición de bebidas de evento con envío a Telegram y generación de Excel.",
   "start_url": "./",
   "scope": "./",
