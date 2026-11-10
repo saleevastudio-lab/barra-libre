@@ -26,6 +26,7 @@ export interface EventData {
   fecha: string; // yyyy-mm-dd
   os: string; // Nº OS
   grupo: string; // grupo / nombre del evento (ej. BCG)
+  tipoServicio: string; // Barra libre | Cóctel | Coffee Break / Similar | Otros
   comensales: number; // adultos barra libre
   pvp: number; // PVP adulto (IVA incl.)
   ninos: number; // niños barra libre
