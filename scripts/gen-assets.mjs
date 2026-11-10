@@ -14,9 +14,10 @@ const genDir = join(root, 'src/assets/generated');
 
 function b64FromFile(path) {
   const src = readFileSync(path, 'utf8');
-  const m = src.match(/'([A-Za-z0-9+/=]+)'/);
-  if (!m) throw new Error(`No se encontró base64 en ${path}`);
-  return m[1];
+  const segs = src.match(/'([A-Za-z0-9+/=]+)'/g);
+  if (!segs || segs.length === 0)
+    throw new Error(`No se encontró base64 en ${path}`);
+  return segs.map((s) => s.slice(1, -1)).join('');
 }
 
 /** Une todas las partes <base>.partNN.ts en orden. */
@@ -37,3 +38,13 @@ const out = (rel, b64) => {
 
 out('public/barra-libre-template.xlsm', b64FromParts('template'));
 out('public/icons/icon-192.png', b64FromParts('icon-192'));
+
+// La app carga la plantilla como texto base64 (.b64): mismo contenido,
+// pero publicable en GitHub Pages sin binarios. El .xlsm se sigue
+// generando para inspección local.
+const b64 = b64FromParts('template');
+writeFileSync(
+  join(root, 'public/barra-libre-template.b64'),
+  b64 + '\n',
+);
+console.log('generado public/barra-libre-template.b64', `(${Math.round(b64.length / 1024)} KB b64)`);
