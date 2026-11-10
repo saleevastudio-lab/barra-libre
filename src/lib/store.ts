@@ -28,14 +28,21 @@ export function loadDrinks(): Drink[] {
     if (raw) {
       const parsed = JSON.parse(raw) as Drink[];
       if (Array.isArray(parsed)) {
-        // Migración: la caja (24 uds) solo aplica a refrescos y zumos; los
+        // Migración 1: la caja (24 uds) solo aplica a refrescos y zumos; los
         // ítems guardados como caja en otra categoría vuelven a unidad,
         // coste ÷24 para conservar el coste real por unidad.
-        const migrated = parsed.map((d) =>
-          d && d.unit === 'caja' && d.category !== 'refrescos'
-            ? { ...d, unit: 'ud' as const, unitCost: Math.round((d.unitCost / 24) * 100) / 100 }
-            : d,
-        );
+        // Migración 2: los refrescos/zumos guardados por unidad pasan a caja
+        // (coste ×24), que es la unidad de trabajo habitual del supervisor.
+        const migrated = parsed.map((d) => {
+          if (!d) return d;
+          if (d.unit === 'caja' && d.category !== 'refrescos') {
+            return { ...d, unit: 'ud' as const, unitCost: Math.round((d.unitCost / 24) * 100) / 100 };
+          }
+          if (d.category === 'refrescos' && d.unit === 'ud') {
+            return { ...d, unit: 'caja' as const, unitCost: Math.round(d.unitCost * 24 * 100) / 100 };
+          }
+          return d;
+        });
         const valid = migrated.filter(
           (d) =>
             d &&
@@ -46,10 +53,9 @@ export function loadDrinks(): Drink[] {
             (d.unit === 'ud' || d.unit === 'caja'),
         );
         const ids = new Set(valid.map((d) => d.id));
-        const missing = DRINKS.filter((d) => !ids.has(d.id)).map((d) => ({
-          ...d,
-          unit: 'ud' as const,
-        }));
+        // Los ítems del catálogo base que falten se añaden con su unidad
+        // por defecto (los refrescos llegan como caja, ver catalog.ts).
+        const missing = DRINKS.filter((d) => !ids.has(d.id)).map((d) => ({ ...d }));
         return [...valid, ...missing];
       }
     }
