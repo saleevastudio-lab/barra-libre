@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { CATEGORIES } from '@/lib/catalog';
-import { DEFAULT_EVENT } from '@/lib/catalog';
+import { DEFAULT_EVENT, normalizeTipo } from '@/lib/catalog';
 import type { Drink, EventData, OrderLine } from '@/lib/types';
 import { computeSummary } from '@/lib/telegram';
 import { decodeConsumption } from '@/lib/share';
@@ -26,7 +26,9 @@ export function ManagerView() {
   const [event, setEvent] = useState<EventData>(() => ({
     ...DEFAULT_EVENT,
     ...(shared ? { grupo: shared.grupo, fecha: shared.fecha || DEFAULT_EVENT.fecha } : {}),
-    ...(shared?.tipoServicio ? { tipoServicio: shared.tipoServicio } : {}),
+    ...(shared?.tipoServicio
+      ? { tipoServicio: normalizeTipo(shared.tipoServicio) }
+      : {}),
   }));
   const [lines, setLines] = useState<OrderLine[]>(() => shared?.lines ?? []);
   const [drinks, setDrinks] = useState<Drink[]>(() => shared?.drinks ?? []);
@@ -40,7 +42,9 @@ export function ManagerView() {
       ...prev,
       grupo: shared.grupo,
       fecha: shared.fecha || prev.fecha,
-      ...(shared.tipoServicio ? { tipoServicio: shared.tipoServicio } : {}),
+      ...(shared.tipoServicio
+        ? { tipoServicio: normalizeTipo(shared.tipoServicio) }
+        : {}),
     }));
     setLines(shared.lines);
     setDrinks(shared.drinks);
