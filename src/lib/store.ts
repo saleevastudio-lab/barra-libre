@@ -1,5 +1,5 @@
 import type { Drink, EventData, HistoryEntry, OrderLine, TelegramSettings } from './types';
-import { DEFAULT_EVENT, DRINKS } from './catalog';
+import { DEFAULT_EVENT, DRINKS, normalizeTipo } from './catalog';
 
 const K_EVENT = 'bl.event';
 const K_LINES = 'bl.lines';
@@ -100,6 +100,8 @@ export function loadEvent(): EventData {
       if (parsed.grupo === undefined && parsed.modalidad !== undefined) {
         parsed.grupo = parsed.modalidad;
       }
+      // Migración: el tipo de servicio se normaliza a los 7 oficiales con clave
+      parsed.tipoServicio = normalizeTipo(parsed.tipoServicio);
       return { ...DEFAULT_EVENT, ...parsed };
     }
   } catch {
