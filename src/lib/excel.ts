@@ -1,5 +1,6 @@
 import type { Drink, EventData, OrderLine } from './types';
 import type { Workbook, Worksheet, Cell } from 'exceljs';
+import { claveForTipo, SERVICE_TYPES } from './catalog';
 
 // La plantilla viaja como texto base64 (.b64) para poder publicarse en
 // GitHub Pages sin depender de binarios; se decodifica aquí en el cliente.
@@ -15,6 +16,7 @@ function toDate(fecha: string): Date {
 }
 
 const roundDown2 = (x: number) => Math.floor(x * 100) / 100;
+const roundUp2 = (x: number) => Math.ceil(x * 100) / 100;
 
 let templatePromise: Promise<ArrayBuffer> | null = null;
 function loadTemplate(): Promise<ArrayBuffer> {
@@ -68,8 +70,16 @@ export async function generateExcel(
   const g6 = comensales * pvp; // =E6*F6 (adultos)
   const g7 = ninos * pvpNinos; // =E7*F7 (niños)
   const g8 = g6 + g7; // =SUM(G6:G7)
-  const j6 = roundDown2(g6); // ROUNDDOWN(G6·100%)
-  const j7 = roundDown2(g7);
+
+  // Clave (1-7) según el tipo de servicio: reparte la facturación entre
+  // comida (columna I, ROUNDUP) y bebida (columna J, ROUNDDOWN).
+  const clave = claveForTipo(event.tipoServicio);
+  const reparto = SERVICE_TYPES.find((s) => s.clave === clave)!;
+  const i6 = roundUp2(g6 * reparto.comida);
+  const i7 = roundUp2(g7 * reparto.comida);
+  const i8 = i6 + i7; // =SUM(I6:I7)
+  const j6 = roundDown2(g6 * reparto.bebida); // ROUNDDOWN(G6·clave%)
+  const j7 = roundDown2(g7 * reparto.bebida);
   const j8 = j6 + j7; // =SUM(J6:J7)
   const netaBebida = j8 / 1.1; // I48 (J8/1.1)
 
@@ -154,15 +164,31 @@ export async function generateExcel(
     ws.getCell(`J${r}`).value = { formula: `B${r}*I${r}`, result: l.qty * d.unitCost };
   });
 
+  // Clave del tipo de servicio (celda que leen las fórmulas de reparto)
+  ws.getCell('H6').value = clave;
+
+  // La plantilla trae un typo en la clave 2 (Paquete Romance): reparte el
+  // 62% de comida pero solo un 32% de bebida (se pierde un 6%). Las claves
+  // oficiales son 62/38, así que se corrige la fórmula y su resultado.
+  for (const [addr, res] of [
+    ['J6', j6],
+    ['J7', j7],
+  ] as const) {
+    const f = ws.getCell(addr).value as { formula?: string } | null;
+    if (f && typeof f === 'object' && typeof f.formula === 'string' && f.formula.includes('*32%')) {
+      ws.getCell(addr).value = { formula: f.formula.replace(/\*32%/g, '*38%'), result: res };
+    }
+  }
+
   // Resultados de las fórmulas de la hoja Bebida
   setResult(ws, 'G6', g6); // =E6*F6
-  setResult(ws, 'I6', 0); // clave 6 → 0% comida
-  setResult(ws, 'J6', j6);
+  setResult(ws, 'I6', i6); // clave → % comida
+  setResult(ws, 'J6', j6); // clave → % bebida
   setResult(ws, 'G7', g7); // =E7*F7
-  setResult(ws, 'I7', 0);
+  setResult(ws, 'I7', i7);
   setResult(ws, 'J7', j7);
   setResult(ws, 'G8', g8); // =SUM(G6:G7)
-  setResult(ws, 'I8', 0);
+  setResult(ws, 'I8', i8);
   setResult(ws, 'J8', j8); // =SUM(J6:J7)
   setResult(ws, 'J46', totalCoste); // =SUM(J14:J45)
   setResult(ws, 'I48', netaBebida); // =J8/1.1
@@ -254,7 +280,9 @@ export async function generateExcel(
       setResult(an, `D${r}`, 0);
       setResult(an, `E${r}`, '');
     }
-    setResult(an, 'D33', totalCoste);
+    // D33: en la plantilla solo computa el coste de bebida cuando la clave
+    // es 6 (Barra Libre); con otro tipo de servicio el recálculo da 0.
+    setResult(an, 'D33', clave === 6 ? totalCoste : 0);
     setResult(an, 'E33', j6 > 0 ? (totalCoste / (j6 / 1.1)) * 100 : 0);
     setResult(an, 'D34', totalCoste);
     setResult(an, 'E34', pct((totalCoste / neta) * 100) ?? '');
@@ -302,7 +330,8 @@ function setResult(ws: Worksheet, addr: string, result: number | string) {
 }
 
 export function excelFileName(event: EventData): string {
-  const os = event.os?.trim() || 'SIN-OS';
-  const tipo = event.tipoServicio?.trim() || 'Consumición';
-  return `${tipo} — ${os} — ${event.fecha}.xlsx`;
+  // Nombre del archivo: nombre del evento + servicio (ej. "CLOSERSTILL BARRA LIBRE")
+  const nombre = event.grupo?.trim() || 'EVENTO';
+  const tipo = event.tipoServicio?.trim() || 'BARRA LIBRE';
+  return `${nombre} ${tipo}.xlsx`.toUpperCase();
 }
