@@ -7,7 +7,11 @@ const TEMPLATE_URL = 'barra-libre-template.b64';
 
 function toDate(fecha: string): Date {
   const [y, m, d] = fecha.split('-').map(Number);
-  return new Date(y, m - 1, d);
+  const local = new Date(y, m - 1, d);
+  // exceljs serializa la fecha con su instante UTC; la medianoche local en
+  // zonas UTC+N queda como día anterior al truncar el serial. Desplazamos el
+  // instante para que la medianoche UTC coincida con la fecha elegida.
+  return new Date(local.getTime() - local.getTimezoneOffset() * 60000);
 }
 
 const roundDown2 = (x: number) => Math.floor(x * 100) / 100;
