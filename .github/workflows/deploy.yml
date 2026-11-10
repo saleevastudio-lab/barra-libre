@@ -23,15 +23,7 @@ jobs:
         with:
           node-version: 22
       - name: Generar componentes UI (shadcn)
-        run: >
-          npx shadcn@latest add accordion alert-dialog alert aspect-ratio avatar
-          badge breadcrumb button-group button calendar card carousel chart
-          checkbox collapsible command context-menu dialog drawer dropdown-menu
-          empty field form hover-card input-group input-otp input item kbd label
-          menubar navigation-menu pagination popover progress radio-group
-          resizable scroll-area select separator sheet sidebar skeleton slider
-          sonner spinner switch table tabs textarea toggle-group toggle tooltip
-          -y -o
+        run: npx shadcn@latest add button dialog input label separator sheet skeleton textarea toggle tooltip -y -o
       - name: Generar plantilla base64
         run: base64 -w 0 "public/barra-libre-template.xlsm" > public/barra-libre-template.b64
       - name: Instalar dependencias
