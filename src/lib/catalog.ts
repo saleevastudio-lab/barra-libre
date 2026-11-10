@@ -59,19 +59,52 @@ export const DRINKS: Drink[] = RAW.map(([name, category, unitCost], i) => {
   };
 });
 
-// Tipos de servicio seleccionables en la app (supervisor y manager).
-export const SERVICE_TYPES = [
-  'Barra libre',
-  'Cóctel',
-  'Coffee Break / Similar',
-  'Otros',
-] as const;
+// Tipos de servicio oficiales con su clave (nº que va en Bebida!H6) y el
+// reparto comida/bebida que aplica la plantilla (I = comida ROUNDUP,
+// J = bebida ROUNDDOWN).
+export const SERVICE_TYPES: {
+  label: string;
+  clave: number;
+  comida: number;
+  bebida: number;
+}[] = [
+  { label: 'Menú de Empresa', clave: 1, comida: 0.8, bebida: 0.2 },
+  { label: 'Paquete Romance', clave: 2, comida: 0.62, bebida: 0.38 },
+  { label: 'Banquete Gala', clave: 3, comida: 0.7, bebida: 0.3 },
+  { label: 'Cóctel', clave: 4, comida: 0.7, bebida: 0.3 },
+  { label: 'Coffee Break', clave: 5, comida: 0.85, bebida: 0.15 },
+  { label: 'Barra Libre', clave: 6, comida: 0, bebida: 1 },
+  { label: 'Otras Opciones', clave: 7, comida: 1, bebida: 0 },
+];
+
+const norm = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** Clave (1-7) para un tipo de servicio; por defecto 6 (Barra Libre). */
+export function claveForTipo(tipo: string | undefined): number {
+  const n = norm(tipo ?? '');
+  if (n.includes('menu de empresa')) return 1;
+  if (n.includes('romance')) return 2;
+  if (n.includes('banquete') || n.includes('gala')) return 3;
+  if (n.includes('coctel') || n.includes('cocktail')) return 4;
+  if (n.includes('coffee')) return 5;
+  if (n.startsWith('otr')) return 7;
+  return 6; // 'barra libre' y cualquier valor desconocido
+}
+
+/** Normaliza un tipo de servicio (guardado o recibido) al label oficial. */
+export function normalizeTipo(tipo: string | undefined): string {
+  const n = norm(tipo ?? '');
+  const exact = SERVICE_TYPES.find((s) => norm(s.label) === n);
+  if (exact) return exact.label;
+  return SERVICE_TYPES.find((s) => s.clave === claveForTipo(tipo))!.label;
+}
 
 export const DEFAULT_EVENT = {
   fecha: new Date().toISOString().slice(0, 10),
   os: '',
   grupo: '',
-  tipoServicio: 'Barra libre' as string,
+  tipoServicio: 'Barra Libre' as string,
   comensales: 0,
   pvp: 0,
   ninos: 0,
