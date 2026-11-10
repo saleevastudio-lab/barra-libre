@@ -167,6 +167,13 @@ export async function generateExcel(
   // Clave del tipo de servicio (celda que leen las fórmulas de reparto)
   ws.getCell('H6').value = clave;
 
+  // Descriptivos del servicio: en la plantilla son constantes del ejemplo
+  // (B6 'BARRA LIBRE', B10 = 6, C10 'Barra Libre'), no fórmulas, así que no
+  // siguen a H6: hay que escribirlos con la clave seleccionada.
+  ws.getCell('B6').value = reparto.label.toUpperCase();
+  ws.getCell('B10').value = clave;
+  ws.getCell('C10').value = reparto.label;
+
   // La plantilla trae un typo en la clave 2 (Paquete Romance): reparte el
   // 62% de comida pero solo un 32% de bebida (se pierde un 6%). Las claves
   // oficiales son 62/38, así que se corrige la fórmula y su resultado.
