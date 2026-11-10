@@ -7,7 +7,13 @@ dist
 .playwright-cli
 .test
 
-# Binarios/textos generados por scripts/gen-assets.mjs (antes de dev/build)
-public/barra-libre-template.xlsm
+# Generado por scripts/gen-assets.mjs antes de dev/build
 public/barra-libre-template.b64
 public/icons/*.png
+
+# Componentes shadcn: se regeneran con el CLI (ver README)
+src/components/ui
+src/hooks
+
+# Partes base64 de desarrollo local (fuente alternativa para gen-assets)
+src/assets/generated
