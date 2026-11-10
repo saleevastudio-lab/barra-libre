@@ -41,8 +41,8 @@ export function EventSection({
             className={`${inputCls} uppercase`}
           >
             {SERVICE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
+              <option key={t.clave} value={t.label}>
+                {t.clave} · {t.label}
               </option>
             ))}
           </select>
