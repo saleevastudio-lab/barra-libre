@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 4% 5%;
+    --foreground: 40 9% 93%;
+    --card: 30 4% 8%;
+    --card-foreground: 40 9% 93%;
+    --popover: 30 5% 7%;
+    --popover-foreground: 40 9% 93%;
+    --primary: 137 100% 55%;
+    --primary-foreground: 150 100% 4%;
+    --secondary: 30 4% 12%;
+    --secondary-foreground: 40 9% 93%;
+    --muted: 30 4% 12%;
+    --muted-foreground: 35 6% 74%;
+    --accent: 30 4% 12%;
+    --accent-foreground: 40 9% 93%;
+    --destructive: 4 78% 56%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 30 4% 30%;
+    --input: 30 4% 34%;
+    --ring: 137 100% 55%;
+    --radius: 0rem;
+  }
+
+  * {
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+  }
+
+  .font-data {
+    font-family: 'Space Mono', ui-monospace, monospace;
+  }
+}
