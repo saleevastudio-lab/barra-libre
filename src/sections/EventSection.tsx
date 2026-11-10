@@ -1,5 +1,5 @@
 import type { EventData } from '@/lib/types';
-import { SERVICE_TYPE } from '@/lib/catalog';
+import { SERVICE_TYPES } from '@/lib/catalog';
 
 export function EventSection({
   event,
@@ -34,12 +34,18 @@ export function EventSection({
           />
         </Field>
         <Field label="Tipo de servicio">
-          <div
+          <select
             aria-label="Tipo de servicio"
-            className={`${inputCls} flex items-center text-muted-foreground uppercase`}
+            value={event.tipoServicio}
+            onChange={(e) => set({ tipoServicio: e.target.value })}
+            className={`${inputCls} uppercase`}
           >
-            {SERVICE_TYPE}
-          </div>
+            {SERVICE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Grupo / nombre del evento">
           <input
