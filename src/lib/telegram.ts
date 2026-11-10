@@ -1,5 +1,4 @@
 import type { Drink, EventData, OrderLine, TelegramSettings } from './types';
-import { SERVICE_TYPE } from './catalog';
 
 export interface SummaryNumbers {
   totalCoste: number;
@@ -79,11 +78,11 @@ export function buildTelegramMessage(
   );
 
   const head = [
-    `<b>CONSUMICIÓN DE EVENTO — ${esc(SERVICE_TYPE.toUpperCase())}</b>`,
+    `<b>CONSUMICIÓN DE EVENTO — ${esc((event.tipoServicio || 'Barra libre').toUpperCase())}</b>`,
     ``,
     `<b>Fecha:</b> ${esc(fechaES)}   <b>Nº OS:</b> ${esc(event.os || '—')}`,
     `<b>Grupo / evento:</b> ${esc(event.grupo || '—')}`,
-    `<b>Comensales barra libre:</b> ${event.comensales} × ${fmtEUR.format(event.pvp)}${event.ninos > 0 ? ` + ${event.ninos} niños × ${fmtEUR.format(event.pvpNinos)}` : ''} = <b>${fmtEUR.format(s.facturacionBruta)}</b>`,
+    `<b>Comensales adultos:</b> ${event.comensales} × ${fmtEUR.format(event.pvp)}${event.ninos > 0 ? ` + ${event.ninos} niños × ${fmtEUR.format(event.pvpNinos)}` : ''} = <b>${fmtEUR.format(s.facturacionBruta)}</b>`,
     ``,
     `<b>Consumo (${used.length} artículos):</b>`,
   ];
@@ -126,6 +125,7 @@ export function buildSupervisorMessage(
   fecha: string,
   lines: OrderLine[],
   drinks: Drink[],
+  tipoServicio = 'Barra libre',
 ): string {
   const map = new Map(drinks.map((d) => [d.id, d]));
   const used = lines.filter((l) => l.qty > 0 && map.has(l.drinkId));
@@ -138,7 +138,7 @@ export function buildSupervisorMessage(
   });
 
   const head = [
-    `<b>CONSUMICIÓN DE EVENTO — ${esc(SERVICE_TYPE.toUpperCase())}</b>`,
+    `<b>CONSUMICIÓN DE EVENTO — ${esc(tipoServicio.toUpperCase())}</b>`,
     ``,
     `<b>Fecha:</b> ${esc(fechaES)}`,
     `<b>Grupo / evento:</b> ${esc(grupo || '—')}`,
