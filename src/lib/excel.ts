@@ -257,7 +257,7 @@ export async function generateExcel(
     setResult(an, 'D33', totalCoste);
     setResult(an, 'E33', j6 > 0 ? (totalCoste / (j6 / 1.1)) * 100 : 0);
     setResult(an, 'D34', totalCoste);
-    setResult(an, 'E34', pct((costeTotal / neta) * 100) ?? '');
+    setResult(an, 'E34', pct((totalCoste / neta) * 100) ?? '');
     setResult(an, 'I27', totalCoste);
     setResult(an, 'I28', neta > 0 ? totalCoste / neta : 0);
     setResult(an, 'D38', socialSalaExtra);
