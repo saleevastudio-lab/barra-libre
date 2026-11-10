@@ -1,50 +1,63 @@
 #!/usr/bin/env node
-/** Reconstruye los archivos binarios de public/ desde los módulos base64.
- *  Se ejecuta automáticamente antes de `npm run dev` y `npm run build`
- *  (scripts "predev"/"prebuild"). Así el repositorio solo contiene texto.
- *  La plantilla y el icono están partidos en varios *.partNN.ts para no
- *  depender de herramientas que manejen ficheros enormes; aquí se unen.
+/** Genera public/barra-libre-template.b64 a partir de la plantilla Excel.
+ *
+ * La app carga la plantilla como texto base64 (.b64) para poder publicarse
+ * en GitHub Pages; el workflow de Actions genera este mismo .b64 en CI
+ * con `base64 -w0`. Aquí, en local, se genera antes de `npm run dev` y
+ * `npm run build` (scripts "predev"/"prebuild").
+ *
+ * Fuentes, en orden de preferencia:
+ *   1. public/barra-libre-template.xlsm  (el binario real, subido al repo)
+ *   2. src/assets/generated/template.partNN.ts  (desarrollo local heredado)
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const genDir = join(root, 'src/assets/generated');
+const xlsmPath = join(root, 'public/barra-libre-template.xlsm');
+const outPath = join(root, 'public/barra-libre-template.b64');
 
-function b64FromFile(path) {
-  const src = readFileSync(path, 'utf8');
-  const segs = src.match(/'([A-Za-z0-9+/=]+)'/g);
-  if (!segs || segs.length === 0)
-    throw new Error(`No se encontró base64 en ${path}`);
-  return segs.map((s) => s.slice(1, -1)).join('');
+let b64 = null;
+let fuente = null;
+
+if (existsSync(xlsmPath)) {
+  b64 = readFileSync(xlsmPath).toString('base64');
+  fuente = 'public/barra-libre-template.xlsm';
+} else {
+  try {
+    const files = readdirSync(genDir)
+      .filter((f) => f.startsWith('template.part') && f.endsWith('.ts'))
+      .sort();
+    if (files.length > 0) {
+      b64 = files
+        .map((f) => {
+          const src = readFileSync(join(genDir, f), 'utf8');
+          const segs = src.match(/'([A-Za-z0-9+/=]+)'/g);
+          if (!segs || segs.length === 0)
+            throw new Error(`No se encontró base64 en ${f}`);
+          return segs.map((s) => s.slice(1, -1)).join('');
+        })
+        .join('');
+      fuente = 'partes src/assets/generated';
+    }
+  } catch {
+    // sin partes disponibles
+  }
 }
 
-/** Une todas las partes <base>.partNN.ts en orden. */
-function b64FromParts(base) {
-  const files = readdirSync(genDir)
-    .filter((f) => f.startsWith(`${base}.part`) && f.endsWith('.ts'))
-    .sort();
-  if (files.length === 0) throw new Error(`No hay partes para ${base}`);
-  return files.map((f) => b64FromFile(join(genDir, f))).join('');
+if (!b64) {
+  console.warn(
+    '[gen-assets] Falta public/barra-libre-template.xlsm (y no hay partes base64).',
+  );
+  console.warn(
+    '[gen-assets] Sube la plantilla a public/ (ver README); sin ella la app no puede generar el Excel.',
+  );
+  process.exit(0);
 }
 
-const out = (rel, b64) => {
-  const p = join(root, rel);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, Buffer.from(b64, 'base64'));
-  console.log('generado', rel, `(${Math.round(b64.length / 1024)} KB b64)`);
-};
-
-out('public/barra-libre-template.xlsm', b64FromParts('template'));
-out('public/icons/icon-192.png', b64FromParts('icon-192'));
-
-// La app carga la plantilla como texto base64 (.b64): mismo contenido,
-// pero publicable en GitHub Pages sin binarios. El .xlsm se sigue
-// generando para inspección local.
-const b64 = b64FromParts('template');
-writeFileSync(
-  join(root, 'public/barra-libre-template.b64'),
-  b64 + '\n',
+writeFileSync(outPath, b64 + '\n');
+console.log(
+  `generado public/barra-libre-template.b64 (${Math.round(b64.length / 1024)} KB b64) desde ${fuente}`,
 );
-console.log('generado public/barra-libre-template.b64', `(${Math.round(b64.length / 1024)} KB b64)`);
