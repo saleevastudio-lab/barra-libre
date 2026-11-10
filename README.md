@@ -25,10 +25,18 @@ se genera a partir del binario `public/barra-libre-template.xlsm`:
   `npm run build`).
 - En CI: el workflow ejecuta `base64 -w0` antes del build.
 
+## Los componentes UI (shadcn)
+
+`src/components/ui` y `src/hooks` **no se guardan en el repositorio**: son
+componentes estándar de shadcn que se regeneran con su CLI (la
+configuración vive en `components.json`). El workflow lo hace automáticamente
+en cada build. Si personalizas alguno, bórralo de `.gitignore` y comítelo.
+
 ## Puesta en marcha local
 
 ```bash
 npm install
+npx shadcn@latest add button dialog input label separator sheet skeleton textarea toggle tooltip -y -o
 # coloca la plantilla en public/barra-libre-template.xlsm
 npm run dev
 ```
@@ -73,6 +81,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Generar componentes UI (shadcn)
+        run: >
+          npx shadcn@latest add accordion alert-dialog alert aspect-ratio avatar
+          badge breadcrumb button-group button calendar card carousel chart
+          checkbox collapsible command context-menu dialog drawer dropdown-menu
+          empty field form hover-card input-group input-otp input item kbd label
+          menubar navigation-menu pagination popover progress radio-group
+          resizable scroll-area select separator sheet sidebar skeleton slider
+          sonner spinner switch table tabs textarea toggle-group toggle tooltip
+          -y -o
       - name: Generar plantilla base64
         run: base64 -w 0 "public/barra-libre-template.xlsm" > public/barra-libre-template.b64
       - name: Instalar dependencias
@@ -98,6 +116,9 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
+> Los componentes UI se listan con generosidad para que cualquier
+> dependencia cruzada se resuelva sola; el CLI solo escribe los que falten.
+
 ### 3. Activar GitHub Pages
 
 En **Settings → Pages**, en *Source* elige **GitHub Actions**.
@@ -110,7 +131,7 @@ En **Settings → Secrets and variables → Actions → New repository secret**,
 - `TELEGRAM_CHAT_ID` — id del chat/grupo (ej. `-1004294178574`).
 
 Hecho esto, cualquier push a `main` (o el botón *Run workflow*) publica la
-app en `https://<usuario>.github.io/<repo>/`.
+app en `https://saleevastudio-lab.github.io/barra-libre/`.
 
 > Nota: el token del bot viaja al bundle que se sirve al navegador. Es la
 > opción práctica para esta app, pero si alguna vez sospechas que se filtró,
