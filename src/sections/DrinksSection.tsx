@@ -28,6 +28,8 @@ export function DrinksSection({
   onDelete,
 }: Props) {
   const [editingCost, setEditingCost] = useState<string | null>(null);
+  // Ítem cuya cantidad se está escribiendo a teclado (toque sobre el número).
+  const [editingQty, setEditingQty] = useState<string | null>(null);
   // null = ningún editor abierto; '__new__' = nuevo ítem; id = editar ese ítem
   const [editorFor, setEditorFor] = useState<string | null>(null);
   const qtyOf = (id: string) => lines.find((l) => l.drinkId === id)?.qty ?? 0;
@@ -138,14 +140,42 @@ export function DrinksSection({
                   >
                     <Minus className="h-4 w-4" />
                   </StepperButton>
-                  <span
-                    className={`w-10 text-center font-data text-base ${
-                      qty > 0 ? 'font-bold text-primary' : 'text-muted-foreground'
-                    }`}
-                    aria-live="polite"
-                  >
-                    {qty}
-                  </span>
+                  {editingQty === d.id ? (
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      autoFocus
+                      defaultValue={qty || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        const n = Math.max(
+                          0,
+                          Math.floor(Number(e.target.value) || 0),
+                        );
+                        onQty(d.id, n);
+                        setEditingQty(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter')
+                          (e.target as HTMLInputElement).blur();
+                      }}
+                      className="w-16 h-11 px-1 text-center bg-card border border-primary font-data text-base font-bold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Cantidad de ${d.name}`}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingQty(d.id)}
+                      aria-label={`Escribir cantidad de ${unitWord} de ${d.name}`}
+                      className={`w-12 h-11 text-center font-data text-base border border-transparent hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer ${
+                        qty > 0
+                          ? 'font-bold text-primary'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      {qty}
+                    </button>
+                  )}
                   <StepperButton
                     label={`Añadir ${unitWord} de ${d.name}`}
                     onClick={() => onQty(d.id, qty + 1)}
