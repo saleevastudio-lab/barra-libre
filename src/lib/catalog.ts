@@ -46,20 +46,32 @@ const RAW: [string, CategoryId, number][] = [
   ['roger de flor', 'vinos', 2.14],
 ];
 
-export const DRINKS: Drink[] = RAW.map(([name, category, unitCost], i) => ({
-  id: `d${i}`,
-  name,
-  category,
-  unitCost,
-  unit: 'ud',
-}));
+export const DRINKS: Drink[] = RAW.map(([name, category, unitCost], i) => {
+  // Los refrescos y zumos se contabilizan por caja (24 uds) desde el inicio:
+  // así el supervisor no tiene que cambiar la unidad en cada evento.
+  const caja = category === 'refrescos';
+  return {
+    id: `d${i}`,
+    name,
+    category,
+    unitCost: caja ? Math.round(unitCost * 24 * 100) / 100 : unitCost,
+    unit: caja ? ('caja' as const) : ('ud' as const),
+  };
+});
 
-export const SERVICE_TYPE = 'Barra libre';
+// Tipos de servicio seleccionables en la app (supervisor y manager).
+export const SERVICE_TYPES = [
+  'Barra libre',
+  'Cóctel',
+  'Coffee Break / Similar',
+  'Otros',
+] as const;
 
 export const DEFAULT_EVENT = {
   fecha: new Date().toISOString().slice(0, 10),
   os: '',
   grupo: '',
+  tipoServicio: 'Barra libre' as string,
   comensales: 0,
   pvp: 0,
   ninos: 0,
