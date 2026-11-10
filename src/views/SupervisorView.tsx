@@ -200,8 +200,8 @@ export function SupervisorView() {
               className="w-full h-12 px-3 bg-card border border-input font-data text-sm uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {SERVICE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+                <option key={t.clave} value={t.label}>
+                  {t.clave} · {t.label}
                 </option>
               ))}
             </select>
@@ -230,7 +230,7 @@ export function SupervisorView() {
       </main>
 
       {/* Barra de acción inferior fija */}
-      <div className="fixed bottom-0 inset-x-0 z-40 bg-background border-t border-border">
+      <div classNameName="fixed bottom-0 inset-x-0 z-40 bg-background border-t border-border">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <div className="font-data text-xs uppercase text-muted-foreground">
