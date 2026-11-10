@@ -7,6 +7,7 @@ dist
 .playwright-cli
 .test
 
-# Binarios generados por scripts/gen-assets.mjs (antes de dev/build)
+# Binarios/textos generados por scripts/gen-assets.mjs (antes de dev/build)
 public/barra-libre-template.xlsm
+public/barra-libre-template.b64
 public/icons/*.png
