@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0c0b0a"/>
+  <g fill="none" stroke="#1aff5b" stroke-width="18" stroke-linecap="square">
+    <path d="M136 128h240l-104 148v96h72v28H168v-28h72v-96z"/>
+    <path d="M170 176h172" stroke-width="12"/>
+  </g>
+  <text x="256" y="448" font-family="monospace" font-size="72" font-weight="bold" fill="#1aff5b" text-anchor="middle">BL</text>
+</svg>
