@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { CATEGORIES } from '@/lib/catalog';
+import { CATEGORIES, SERVICE_TYPES } from '@/lib/catalog';
 import type {
   Drink,
   EventData,
@@ -120,6 +120,7 @@ export function SupervisorView() {
       const payload = encodeConsumption({
         grupo: event.grupo.trim(),
         fecha: event.fecha,
+        tipoServicio: event.tipoServicio,
         lines,
         drinks,
       });
@@ -130,6 +131,7 @@ export function SupervisorView() {
         event.fecha,
         lines,
         drinks,
+        event.tipoServicio,
       );
       await sendTelegram(settings, message, {
         text: 'Completar datos y generar Excel',
@@ -154,7 +156,7 @@ export function SupervisorView() {
   return (
     <div className="min-h-[100dvh] bg-background text-foreground pb-32">
       <ViewHeader
-        title="Barra libre"
+        title="Consumiciones"
         subtitle="Supervisor · envío de consumición"
         right={
           <>
@@ -175,7 +177,7 @@ export function SupervisorView() {
       <main className="max-w-3xl mx-auto px-4 flex flex-col gap-8 pt-6">
         {notice && <Notice msg={notice} />}
 
-        {/* El supervisor solo identifica el grupo / evento */}
+        {/* El supervisor identifica el grupo / evento y el tipo de servicio */}
         <section aria-label="Grupo del evento">
           <h2 className="font-data text-xs uppercase tracking-widest text-muted-foreground mb-3">
             1 · Grupo / nombre del evento
@@ -188,6 +190,22 @@ export function SupervisorView() {
             autoComplete="off"
             className="w-full h-12 px-3 bg-card border border-input font-data text-lg uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring placeholder:text-muted-foreground placeholder:normal-case"
           />
+          <label className="flex flex-col gap-1 mt-3">
+            <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+              Tipo de servicio
+            </span>
+            <select
+              value={event.tipoServicio}
+              onChange={(e) => setEvent({ ...event, tipoServicio: e.target.value })}
+              className="w-full h-12 px-3 bg-card border border-input font-data text-sm uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {SERVICE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
           <p className="font-data text-xs text-muted-foreground mt-2 uppercase">
             El manager completará el resto de datos (comensales, PVP, costes…)
           </p>
