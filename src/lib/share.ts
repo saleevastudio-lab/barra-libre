@@ -11,6 +11,7 @@ import type { Drink, OrderLine } from './types';
 export interface SharedConsumption {
   grupo: string;
   fecha: string;
+  tipoServicio?: string;
   lines: OrderLine[];
   drinks: Drink[];
 }
@@ -25,14 +26,20 @@ export function encodeConsumption(s: SharedConsumption): string {
       const d = map.get(ln.drinkId)!;
       return [d.name, ln.qty, d.unitCost, d.unit === 'caja' ? 1 : 0];
     });
-  const json = JSON.stringify({ v: 2, g: s.grupo, f: s.fecha, l });
+  const json = JSON.stringify({ v: 2, g: s.grupo, f: s.fecha, t: s.tipoServicio, l });
   const b64 = btoa(unescape(encodeURIComponent(json)));
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function decodeConsumption(
   payload: string,
-): { grupo: string; fecha: string; lines: OrderLine[]; drinks: Drink[] } | null {
+): {
+  grupo: string;
+  fecha: string;
+  tipoServicio?: string;
+  lines: OrderLine[];
+  drinks: Drink[];
+} | null {
   try {
     const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
     const json = decodeURIComponent(escape(atob(b64)));
@@ -40,6 +47,7 @@ export function decodeConsumption(
       v: number;
       g?: string;
       f?: string;
+      t?: string;
       l?: unknown[];
     };
     if (!Array.isArray(o.l)) return null;
@@ -65,6 +73,7 @@ export function decodeConsumption(
       return {
         grupo: typeof o.g === 'string' ? o.g : '',
         fecha: typeof o.f === 'string' ? o.f : '',
+        tipoServicio: typeof o.t === 'string' ? o.t : undefined,
         lines,
         drinks,
       };
