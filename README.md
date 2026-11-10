@@ -82,15 +82,7 @@ jobs:
         with:
           node-version: 22
       - name: Generar componentes UI (shadcn)
-        run: >
-          npx shadcn@latest add accordion alert-dialog alert aspect-ratio avatar
-          badge breadcrumb button-group button calendar card carousel chart
-          checkbox collapsible command context-menu dialog drawer dropdown-menu
-          empty field form hover-card input-group input-otp input item kbd label
-          menubar navigation-menu pagination popover progress radio-group
-          resizable scroll-area select separator sheet sidebar skeleton slider
-          sonner spinner switch table tabs textarea toggle-group toggle tooltip
-          -y -o
+        run: npx shadcn@latest add button dialog input label separator sheet skeleton textarea toggle tooltip -y -o
       - name: Generar plantilla base64
         run: base64 -w 0 "public/barra-libre-template.xlsm" > public/barra-libre-template.b64
       - name: Instalar dependencias
@@ -116,8 +108,9 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
-> Los componentes UI se listan con generosidad para que cualquier
-> dependencia cruzada se resuelva sola; el CLI solo escribe los que falten.
+> La lista contiene exactamente los componentes que la app usa. Si añades
+> nuevas importaciones de `src/components/ui`, agrégalos a ese `add` (y a la
+> sección de puesta en marcha local).
 
 ### 3. Activar GitHub Pages
 
