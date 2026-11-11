@@ -31,7 +31,7 @@ import { DrinksSection } from '@/sections/DrinksSection';
 import { SettingsDialog } from '@/sections/SettingsDialog';
 import { HistorySection } from '@/sections/HistorySection';
 import { Notice, ViewHeader, eur } from '@/views/ui';
-import { Send, Settings, Eraser } from 'lucide-react';
+import { Send, Settings, Eraser, Download } from 'lucide-react';
 
 type CategoryFilter = 'all' | Drink['category'];
 
@@ -56,6 +56,27 @@ export function SupervisorView() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Instalación PWA: el navegador ofrece el evento beforeinstallprompt
+  // cuando la página es instalable; se guarda para poder lanzarlo con el botón.
+  const installEvt = useRef<{ prompt: () => Promise<void> } | null>(null);
+  // Solo visible en el navegador: en la app instalada (display-mode
+  // standalone) el botón de descarga no tiene sentido.
+  const isStandalone = useMemo(
+    () =>
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true,
+    [],
+  );
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      installEvt.current = e as unknown as { prompt: () => Promise<void> };
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt);
+  }, []);
 
   useEffect(() => saveEvent(event), [event]);
   useEffect(() => saveLines(lines), [lines]);
@@ -109,6 +130,18 @@ export function SupervisorView() {
     setLines([]);
     setClearOpen(false);
     flash('Contenido limpiado: evento y cantidades a cero.');
+  }
+
+  /** Instala la app en el dispositivo (o explica cómo hacerlo). */
+  async function handleInstall() {
+    if (installEvt.current) {
+      await installEvt.current.prompt();
+      installEvt.current = null;
+    } else {
+      flash(
+        'Para instalarla: menú del navegador → «Añadir a pantalla de inicio» (en iPhone: Compartir → Añadir a inicio).',
+      );
+    }
   }
 
   async function handleSend() {
@@ -173,6 +206,15 @@ export function SupervisorView() {
             <span className="font-data text-xs text-muted-foreground uppercase">
               {usedCount} art.
             </span>
+            {!isStandalone && (
+              <button
+                onClick={handleInstall}
+                aria-label="Descargar / instalar la app"
+                className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={() => setClearOpen(true)}
               aria-label="Limpiar contenido del evento"
