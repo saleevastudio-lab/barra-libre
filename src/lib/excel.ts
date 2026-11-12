@@ -1,10 +1,16 @@
-import type { Drink, EventData, OrderLine } from './types';
-import type { Workbook, Worksheet, Cell } from 'exceljs';
-import { claveForTipo, SERVICE_TYPES } from './catalog';
+import type { Workbook, Worksheet } from 'exceljs';
+import type { CostLine, EventoDraft, Grupo } from './types';
+import {
+  MAX_EVENTOS_POR_GRUPO,
+  MAX_INGRESOS,
+  MAX_LINEAS_ESCANDALLO,
+  TIPOS_SERVICIO,
+  VARIOS_CONCEPTOS,
+} from './catalog';
 
 // La plantilla viaja como texto base64 (.b64) para poder publicarse en
 // GitHub Pages sin depender de binarios; se decodifica aquí en el cliente.
-const TEMPLATE_URL = 'barra-libre-template.b64';
+const TEMPLATE_URL = 'plantilla-eventos.b64';
 
 function toDate(fecha: string): Date {
   const [y, m, d] = fecha.split('-').map(Number);
@@ -14,9 +20,6 @@ function toDate(fecha: string): Date {
   // instante para que la medianoche UTC coincida con la fecha elegida.
   return new Date(local.getTime() - local.getTimezoneOffset() * 60000);
 }
-
-const roundDown2 = (x: number) => Math.floor(x * 100) / 100;
-const roundUp2 = (x: number) => Math.ceil(x * 100) / 100;
 
 let templatePromise: Promise<ArrayBuffer> | null = null;
 function loadTemplate(): Promise<ArrayBuffer> {
@@ -37,283 +40,39 @@ function loadTemplate(): Promise<ArrayBuffer> {
 }
 
 /**
- * Genera el libro "Barra libre" completo (las 9 hojas del original) con la
- * consumición del evento rellenada en la hoja "Bebida" y los datos
- * económicos en "Análisis".
+ * Genera el Excel del grupo: hoja Resumen con los datos del grupo y una
+ * hoja "Evento N" por cada evento del borrador (la plantilla trae 8 hojas
+ * idénticas; el Resumen marca las no usadas como "sin usar").
  *
- * Las fórmulas originales se conservan y, además, se les adjunta el
- * resultado calculado: así el archivo muestra los valores correctos en
- * cualquier visor (incluidos los que no recalculan fórmulas) y Excel /
- * LibreOffice los recalculan al abrirlo igualmente.
+ * Las fórmulas de la plantilla se conservan intactas y Excel/LibreOffice
+ * recalculan al abrir (fullCalcOnLoad); los valores se muestran correctos
+ * en cualquier visor aunque no recalcule.
  */
 export async function generateExcel(
-  event: EventData,
-  lines: OrderLine[],
-  drinks: Drink[],
+  grupo: Grupo,
+  eventos: EventoDraft[],
 ): Promise<Blob> {
   const buf = await loadTemplate();
   const ExcelJS = await import('exceljs');
   const wb: Workbook = new ExcelJS.Workbook();
   await wb.xlsx.load(buf);
 
-  const byId = new Map(drinks.map((d) => [d.id, d]));
-  const used = lines.filter((l) => l.qty > 0 && byId.has(l.drinkId));
+  // ---------- Resumen (datos del grupo; todo lo demás se calcula solo) ----------
+  const rs = wb.getWorksheet('Resumen');
+  if (!rs) throw new Error('Plantilla inválida: falta la hoja Resumen');
+  rs.getCell('B6').value = grupo.nombre || null;
+  rs.getCell('D6').value = grupo.os || null;
+  rs.getCell('I6').value = grupo.responsable || null;
+  rs.getCell('L6').value = grupo.fechaAnalisis ? toDate(grupo.fechaAnalisis) : null;
+  rs.getCell('B35').value = grupo.observaciones || null;
 
-  // ---------- Cálculos (replican la lógica de las fórmulas del libro) ----------
-  // Fidelidad con los P&L reales: los niños se facturan en la hoja Bebida
-  // (E7/F7 → G7/J7/J8 y el bloque de ratios), pero el desglose de Análisis
-  // solo ingresa los adultos (D19 = G13·D13 = PVP adultos × adultos).
-  const comensales = event.comensales || 0;
-  const pvp = event.pvp || 0;
-  const ninos = event.ninos || 0;
-  const pvpNinos = event.pvpNinos || 0;
-  const g6 = comensales * pvp; // =E6*F6 (adultos)
-  const g7 = ninos * pvpNinos; // =E7*F7 (niños)
-  const g8 = g6 + g7; // =SUM(G6:G7)
-
-  // Clave (1-7) según el tipo de servicio: reparte la facturación entre
-  // comida (columna I, ROUNDUP) y bebida (columna J, ROUNDDOWN).
-  const clave = claveForTipo(event.tipoServicio);
-  const reparto = SERVICE_TYPES.find((s) => s.clave === clave)!;
-  const i6 = roundUp2(g6 * reparto.comida);
-  const i7 = roundUp2(g7 * reparto.comida);
-  const i8 = i6 + i7; // =SUM(I6:I7)
-  const j6 = roundDown2(g6 * reparto.bebida); // ROUNDDOWN(G6·clave%)
-  const j7 = roundDown2(g7 * reparto.bebida);
-  const j8 = j6 + j7; // =SUM(J6:J7)
-  const netaBebida = j8 / 1.1; // I48 (J8/1.1)
-
-  const bruta = g6; // D19/D20 (adultos, según la plantilla)
-  const neta = bruta / 1.1; // D21
-
-  const totalCoste = used.reduce((acc, l) => {
-    const d = byId.get(l.drinkId)!;
-    return acc + l.qty * d.unitCost;
-  }, 0);
-
-  const socialSalaExtra = event.horasExtraSala * event.rateExtra;
-  const socialSalaInterno = event.horasPersonalSala * event.rateInterno;
-  const socialCocinaExtra = event.horasExtraCocina * event.rateExtra;
-  const socialCocinaInterno = event.horasPersonalCocina * event.rateInterno;
-  const costeSocial =
-    socialSalaExtra + socialSalaInterno + socialCocinaExtra + socialCocinaInterno;
-
-  // Costes varios: unidad × coste de cada línea (Análisis E46:F52)
-  const variosLines: [number, number][] = [
-    [event.lavanderiaUnd, event.lavanderiaCoste],
-    [event.decoracionMesas, event.decoracionCoste],
-    [event.climatizacionHoras, event.climatizacionCoste],
-    [event.iluminacionHoras, event.iluminacionCoste],
-    [event.imprentaPersonas, event.imprentaCoste],
-    [event.dotacionUnd, event.dotacionCoste],
-    [event.auxiliaresUnd, event.auxiliaresCoste],
-  ];
-  const variosD = variosLines.map(([u, c]) => (u || 0) * (c || 0));
-  const costesVarios = variosD.reduce((a, b) => a + b, 0);
-  const costeTotal = totalCoste + costeSocial + costesVarios;
-  const beneficio = neta - costeTotal;
-
-  const ratioReal = netaBebida > 0 ? totalCoste / netaBebida : 0; // I50
-  const ratioPpto = totalCoste > 0 ? ratioReal / totalCoste : 0; // I51
-  const ratioDiff = ratioReal - ratioPpto; // I52
-
-  // ---------- Hoja Bebida ----------
-  const ws = wb.getWorksheet('Bebida');
-  if (!ws) throw new Error('Plantilla inválida: falta la hoja Bebida');
-
-  // Copia de estilos "maestros" de la fila de artículos (14) para filas vacías
-  const masterStyle = (col: string) => {
-    const c = ws.getCell(`${col}14`);
-    return c.style ? JSON.parse(JSON.stringify(c.style)) : {};
-  };
-  const stQty = masterStyle('B');
-  const stName = masterStyle('C');
-  const stCost = masterStyle('I');
-  const stTot = masterStyle('J');
-
-  // La cabecera (Fecha/Nº OS/Modalidad, fila 3) se deja vacía: así lo hacen
-  // los managers en los P&L reales (la fecha y el nombre van en Análisis D6/D7).
-  // Facturación: adultos (E6 × F6) y niños (E7 × F7), como en los archivos reales
-  ws.getCell('E6').value = comensales || null;
-  ws.getCell('F6').value = pvp || null;
-  ws.getCell('E7').value = ninos > 0 ? ninos : null;
-  ws.getCell('F7').value = ninos > 0 ? pvpNinos : null;
-
-  // Limpia las 32 filas de artículos (14–45) y escribe las líneas del pedido
-  for (let r = 14; r <= 45; r++) {
-    const qty = ws.getCell(`B${r}`);
-    const name = ws.getCell(`C${r}`);
-    const cost = ws.getCell(`I${r}`);
-    qty.value = null;
-    name.value = null;
-    cost.value = null;
-    qty.style = JSON.parse(JSON.stringify(stQty));
-    name.style = JSON.parse(JSON.stringify(stName));
-    cost.style = JSON.parse(JSON.stringify(stCost));
-    const tot = ws.getCell(`J${r}`);
-    tot.value = { formula: `B${r}*I${r}`, result: 0 };
-    tot.style = JSON.parse(JSON.stringify(stTot));
-  }
-
-  used.slice(0, 32).forEach((l, i) => {
-    const d = byId.get(l.drinkId)!;
-    const r = 14 + i;
-    ws.getCell(`B${r}`).value = l.qty;
-    ws.getCell(`C${r}`).value = d.name;
-    ws.getCell(`I${r}`).value = d.unitCost;
-    ws.getCell(`J${r}`).value = { formula: `B${r}*I${r}`, result: l.qty * d.unitCost };
+  // ---------- Eventos ----------
+  eventos.slice(0, MAX_EVENTOS_POR_GRUPO).forEach((ev, i) => {
+    const ws = wb.getWorksheet(`Evento ${i + 1}`);
+    if (!ws) throw new Error(`Plantilla inválida: falta la hoja Evento ${i + 1}`);
+    fillEvento(ws, ev);
   });
 
-  // Clave del tipo de servicio (celda que leen las fórmulas de reparto)
-  ws.getCell('H6').value = clave;
-
-  // Descriptivos del servicio: en la plantilla son constantes del ejemplo
-  // (B6 'BARRA LIBRE', B10 = 6, C10 'Barra Libre'), no fórmulas, así que no
-  // siguen a H6: hay que escribirlos con la clave seleccionada.
-  ws.getCell('B6').value = reparto.label.toUpperCase();
-  ws.getCell('B10').value = clave;
-  ws.getCell('C10').value = reparto.label;
-
-  // La plantilla trae un typo en la clave 2 (Paquete Romance): reparte el
-  // 62% de comida pero solo un 32% de bebida (se pierde un 6%). Las claves
-  // oficiales son 62/38, así que se corrige la fórmula y su resultado.
-  for (const [addr, res] of [
-    ['J6', j6],
-    ['J7', j7],
-  ] as const) {
-    const f = ws.getCell(addr).value as { formula?: string } | null;
-    if (f && typeof f === 'object' && typeof f.formula === 'string' && f.formula.includes('*32%')) {
-      ws.getCell(addr).value = { formula: f.formula.replace(/\*32%/g, '*38%'), result: res };
-    }
-  }
-
-  // Resultados de las fórmulas de la hoja Bebida
-  setResult(ws, 'G6', g6); // =E6*F6
-  setResult(ws, 'I6', i6); // clave → % comida
-  setResult(ws, 'J6', j6); // clave → % bebida
-  setResult(ws, 'G7', g7); // =E7*F7
-  setResult(ws, 'I7', i7);
-  setResult(ws, 'J7', j7);
-  setResult(ws, 'G8', g8); // =SUM(G6:G7)
-  setResult(ws, 'I8', i8);
-  setResult(ws, 'J8', j8); // =SUM(J6:J7)
-  setResult(ws, 'J46', totalCoste); // =SUM(J14:J45)
-  setResult(ws, 'I48', netaBebida); // =J8/1.1
-  setResult(ws, 'I49', totalCoste); // =J46
-  setResult(ws, 'I50', ratioReal);
-  setResult(ws, 'I51', ratioPpto);
-  setResult(ws, 'I52', ratioDiff);
-  setResult(ws, 'J52', ratioDiff > 0 ? '¡¡DESVIACIÓN!!' : '');
-
-  // ---------- Hoja Análisis ----------
-  const an = wb.getWorksheet('Análisis');
-  if (an) {
-    an.getCell('D6').value = toDate(event.fecha);
-    an.getCell('D7').value = event.grupo || '—';
-
-    // Coste social: horas editables. Las tarifas F38:F41 conservan las
-    // fórmulas =25*1.32 / =16*1.32 de la plantilla mientras sean las
-    // estándar; con tarifas personalizadas se escriben como valor plano.
-    an.getCell('E38').value = event.horasExtraSala || 0;
-    an.getCell('E39').value = event.horasPersonalSala || 0;
-    an.getCell('E40').value = event.horasExtraCocina || 0;
-    an.getCell('E41').value = event.horasPersonalCocina || 0;
-    const RATE_EXTRA_STD = 33; // 25 × 1,32
-    const RATE_INTERNO_STD = 21.12; // 16 × 1,32
-    const stdRates =
-      Math.abs((event.rateExtra || 0) - RATE_EXTRA_STD) < 0.005 &&
-      Math.abs((event.rateInterno || 0) - RATE_INTERNO_STD) < 0.005;
-    if (!stdRates) {
-      an.getCell('F38').value = event.rateExtra || 0;
-      an.getCell('F39').value = event.rateInterno || 0;
-      an.getCell('F40').value = event.rateExtra || 0;
-      an.getCell('F41').value = event.rateInterno || 0;
-    }
-
-    // Costes varios (Análisis E46:F52): cada línea unidades × coste unitario.
-    // Las líneas sin uso quedan vacías, como en los P&L reales.
-    const eCol = ['E46', 'E47', 'E48', 'E49', 'E50', 'E51', 'E52'];
-    const fCol = ['F46', 'F47', 'F48', 'F49', 'F50', 'F51', 'F52'];
-    variosLines.forEach(([u, c], i) => {
-      const used = (u || 0) > 0 || (c || 0) > 0;
-      an.getCell(eCol[i]).value = used ? u || 0 : null;
-      an.getCell(fCol[i]).value = used ? c || 0 : null;
-    });
-
-    if (event.observaciones) {
-      an.getCell('D55').value = event.observaciones;
-    }
-
-    // Resultados de las fórmulas de la hoja Análisis
-    const pct = (x: number) => (neta > 0 ? x : null); // null → '' en % sobre netas
-    // D11: en la plantilla base llega como constante (resto del ejemplo
-    // original); los P&L reales llevan la fórmula =Comida!$E$6 → se restaura.
-    const d11 = an.getCell('D11');
-    const d11v = d11.value as { formula?: string } | null;
-    if (!d11v || typeof d11v !== 'object' || typeof d11v.formula !== 'string') {
-      d11.value = { formula: 'Comida!$E$6', result: 0 };
-    } else {
-      setResult(an, 'D11', 0);
-    }
-    setResult(an, 'E11', 0);
-    setResult(an, 'G11', 0);
-    setResult(an, 'D12', 0);
-    setResult(an, 'E12', 0);
-    setResult(an, 'G12', 0);
-    setResult(an, 'D13', comensales);
-    setResult(an, 'G13', pvp);
-    for (const r of [16, 17, 18]) {
-      setResult(an, `D${r}`, 0);
-      setResult(an, `E${r}`, bruta > 0 ? 0 : '');
-      setResult(an, `F${r}`, 0);
-      setResult(an, `G${r}`, '');
-      setResult(an, `H${r}`, 0);
-    }
-    setResult(an, 'I16', beneficio);
-    setResult(an, 'D19', bruta);
-    setResult(an, 'E19', bruta > 0 ? 1 : '');
-    setResult(an, 'G19', bruta > 0 ? j6 / bruta : '');
-    setResult(an, 'H19', j6); // =Bebida!J6 (adultos)
-    setResult(an, 'D20', bruta);
-    setResult(an, 'E20', bruta > 0 ? 1 : '');
-    setResult(an, 'F20', 0);
-    setResult(an, 'H20', j6);
-    setResult(an, 'D21', neta);
-    setResult(an, 'D22', costeTotal);
-    setResult(an, 'E22', pct(costeTotal / neta) ?? '');
-    setResult(an, 'D23', beneficio);
-    setResult(an, 'E23', bruta > 0 ? beneficio / bruta : '');
-    for (const r of [27, 28, 29, 30, 31, 32]) {
-      setResult(an, `D${r}`, 0);
-      setResult(an, `E${r}`, '');
-    }
-    // D33: en la plantilla solo computa el coste de bebida cuando la clave
-    // es 6 (Barra Libre); con otro tipo de servicio el recálculo da 0.
-    setResult(an, 'D33', clave === 6 ? totalCoste : 0);
-    setResult(an, 'E33', j6 > 0 ? (totalCoste / (j6 / 1.1)) * 100 : 0);
-    setResult(an, 'D34', totalCoste);
-    setResult(an, 'E34', pct((totalCoste / neta) * 100) ?? '');
-    setResult(an, 'I27', totalCoste);
-    setResult(an, 'I28', neta > 0 ? totalCoste / neta : 0);
-    setResult(an, 'D38', socialSalaExtra);
-    setResult(an, 'D39', socialSalaInterno);
-    setResult(an, 'D40', socialCocinaExtra);
-    setResult(an, 'D41', socialCocinaInterno);
-    setResult(an, 'D42', costeSocial);
-    setResult(an, 'F42', pct((costeSocial / neta) * 100) ?? '');
-    setResult(an, 'I38', costeSocial);
-    setResult(an, 'I39', neta > 0 ? costeSocial / neta : 0);
-    setResult(an, 'D46', variosD[0]);
-    for (let i = 1; i < 7; i++) {
-      setResult(an, `D${46 + i}`, variosD[i]);
-    }
-    setResult(an, 'D53', costesVarios);
-    setResult(an, 'F53', pct((costesVarios / neta) * 100) ?? '');
-    setResult(an, 'I46', costesVarios);
-    setResult(an, 'I47', neta > 0 ? costesVarios / neta : 0);
-  }
-
-  // Fuerza el recálculo completo al abrir el archivo en Excel / LibreOffice
   wb.calcProperties.fullCalcOnLoad = true;
 
   const out = await wb.xlsx.writeBuffer();
@@ -322,23 +81,88 @@ export async function generateExcel(
   });
 }
 
-/** Adjunta un resultado calculado a una celda con fórmula (si la tiene). */
-function setResult(ws: Worksheet, addr: string, result: number | string) {
-  const cell: Cell = ws.getCell(addr);
-  const v = cell.value as { formula?: string } | null;
-  if (v && typeof v === 'object' && typeof v.formula === 'string') {
-    cell.value = { formula: v.formula, result };
-  } else if (result !== '' && result !== 0) {
-    // La celda no tenía fórmula (plantilla modificada): escribe el valor
-    cell.value = result;
-  } else if (result === 0 && (v === null || v === undefined)) {
-    cell.value = 0;
+function fillEvento(ws: Worksheet, ev: EventoDraft): void {
+  // Cabecera: nombre, tipo (etiqueta oficial de Parámetros), fecha, duración, mesas
+  const tipoFull = TIPOS_SERVICIO.find((t) => t.short === ev.tipo)?.full;
+  ws.getCell('B6').value = ev.nombre || null;
+  ws.getCell('C6').value = tipoFull ?? (ev.tipo || null);
+  ws.getCell('G6').value = ev.fecha ? toDate(ev.fecha) : null;
+  ws.getCell('H6').value = ev.duracion || null;
+  ws.getCell('I6').value = ev.mesas || null;
+
+  // 1 · Ingresos (filas 14-19): concepto, categoría, pax/PVP adultos y niños, IVA
+  for (let i = 0; i < MAX_INGRESOS; i++) {
+    const r = 14 + i;
+    const l = ev.ingresos[i];
+    if (!l) {
+      for (const col of ['B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+        ws.getCell(`${col}${r}`).value = null;
+      }
+      continue;
+    }
+    ws.getCell(`B${r}`).value = l.concepto || null;
+    ws.getCell(`C${r}`).value = l.categoria || null;
+    ws.getCell(`D${r}`).value = l.paxAdultos || null;
+    ws.getCell(`E${r}`).value = l.pvpAdulto || null;
+    ws.getCell(`F${r}`).value = l.paxNinos || null;
+    ws.getCell(`G${r}`).value = l.pvpNino || null;
+    // H vacío = IVA por defecto (10%); se escribe solo si se eligió otro.
+    ws.getCell(`H${r}`).value = l.iva !== null && l.iva !== undefined ? l.iva : null;
+  }
+
+  // 2/3 · Escandallos: comida filas 24-48, bebida filas 53-77
+  fillEscandallo(ws, 24, ev.comida);
+  fillEscandallo(ws, 53, ev.bebida);
+
+  // 4 · Personal (horas en C82:C85; el coste €/h viene de Parámetros)
+  ws.getCell('C82').value = ev.personal.extraSala || null;
+  ws.getCell('C83').value = ev.personal.internoSala || null;
+  ws.getCell('C84').value = ev.personal.extraCocina || null;
+  ws.getCell('C85').value = ev.personal.internoCocina || null;
+
+  // 5 · Costes varios (filas 90-98, conceptos fijos de la plantilla)
+  for (let i = 0; i < VARIOS_CONCEPTOS.length; i++) {
+    const r = 90 + i;
+    const v = ev.varios[i];
+    ws.getCell(`C${r}`).value = v?.cantidad || null;
+    ws.getCell(`D${r}`).value = v?.costeUnitario || null;
   }
 }
 
-export function excelFileName(event: EventData): string {
-  // Nombre del archivo: nombre del evento + servicio (ej. "CLOSERSTILL BARRA LIBRE")
-  const nombre = event.grupo?.trim() || 'EVENTO';
-  const tipo = event.tipoServicio?.trim() || 'BARRA LIBRE';
-  return `${nombre} ${tipo}.xlsx`.toUpperCase();
+/**
+ * Escribe un escandallo en las filas del bloque. La columna D se rellena
+ * sola desde el Catálogo cuando el nombre existe; la E ("coste manual") solo
+ * se usa cuando el artículo no está en el catálogo o hay coste propio.
+ * Las líneas en caja (×24) se convierten a unidades: cantidad × 24 y, si
+ * hay coste manual, coste ÷ 24 (los artículos de catálogo ya son por unidad).
+ */
+function fillEscandallo(
+  ws: Worksheet,
+  startRow: number,
+  lineas: CostLine[],
+): void {
+  for (let i = 0; i < MAX_LINEAS_ESCANDALLO; i++) {
+    const r = startRow + i;
+    const l = lineas[i];
+    if (!l) {
+      ws.getCell(`B${r}`).value = null;
+      ws.getCell(`C${r}`).value = null;
+      ws.getCell(`E${r}`).value = null;
+      continue;
+    }
+    const esCaja = Boolean(l.esCaja);
+    ws.getCell(`B${r}`).value = l.nombre || null;
+    ws.getCell(`C${r}`).value = esCaja ? l.cantidad * 24 : l.cantidad || null;
+    ws.getCell(`E${r}`).value =
+      l.coste !== null && l.coste !== undefined
+        ? esCaja
+          ? Math.round((l.coste / 24) * 10000) / 10000
+          : l.coste
+        : null;
+  }
+}
+
+/** Nombre del archivo al descargarlo: GRUPO.xlsx en mayúsculas. */
+export function excelFileName(grupo: Grupo): string {
+  return `${grupo.nombre?.trim() || 'GRUPO'}.xlsx`.toUpperCase();
 }
