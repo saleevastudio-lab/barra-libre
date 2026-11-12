@@ -1,6 +1,6 @@
 /* Service worker mínimo: network-first para documentos,
    cache-first para el resto de assets estáticos. */
-const CACHE = 'consumiciones-v1';
+const CACHE = 'consumiciones-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -29,7 +29,7 @@ self.addEventListener('fetch', (event) => {
     request.mode === 'navigate' ||
     (request.headers.get('accept') || '').includes('text/html');
 
-  // Nunca interceptamos llamadas a APIs externas (Telegram)
+  // Nunca interceptamos llamadas a APIs externas (Telegram / Supabase)
   if (url.origin !== self.location.origin) return;
 
   if (isDocument) {
