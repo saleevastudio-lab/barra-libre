@@ -1,72 +1,75 @@
-export interface Drink {
+// Modelo de datos del flujo por grupos (borrador compartido en Supabase).
+
+export type CategoriaIngreso = 'Comida' | 'Bebida' | 'Otros';
+
+/** Línea de ingreso del evento (hasta 6 por evento en la plantilla). */
+export interface IncomeLine {
+  concepto: string;
+  categoria: CategoriaIngreso | '';
+  paxAdultos: number;
+  pvpAdulto: number;
+  paxNinos: number;
+  pvpNino: number;
+  /** null → IVA por defecto de Parámetros (10%). */
+  iva: number | null;
+}
+
+/** Línea de escandallo (comida o bebida). coste null → se toma del catálogo. */
+export interface CostLine {
+  nombre: string;
+  cantidad: number;
+  /** Coste por la unidad de trabajo (caja si esCaja, unidad si no). */
+  coste: number | null;
+  /** true = la cantidad y el coste van por caja (×24); el Excel recibe unidades. */
+  esCaja?: boolean;
+}
+
+export interface PersonalDraft {
+  extraSala: number;
+  internoSala: number;
+  extraCocina: number;
+  internoCocina: number;
+}
+
+/** Varios: los 9 conceptos fijos de la plantilla, en este orden. */
+export interface VariosLine {
+  cantidad: number;
+  costeUnitario: number;
+}
+
+/** Borrador de un evento (una pestaña del Excel del grupo). */
+export interface EventoDraft {
   id: string;
-  name: string;
-  category: CategoryId;
-  unitCost: number;
-  /** Unidad de medida: por unidad o por caja */
-  unit: 'ud' | 'caja';
-  /** true si lo creó el usuario (no viene del catálogo base) */
-  custom?: boolean;
+  grupoId: string;
+  orden: number;
+  nombre: string;
+  /** Nombre corto del tipo de servicio (el Excel lo traduce al oficial). */
+  tipo: string;
+  fecha: string; // YYYY-MM-DD o ''
+  duracion: number;
+  mesas: number;
+  ingresos: IncomeLine[];
+  comida: CostLine[];
+  bebida: CostLine[];
+  personal: PersonalDraft;
+  varios: VariosLine[];
+  updatedAt?: string;
 }
 
-export interface OrderLine {
-  drinkId: string;
-  qty: number;
-}
-
-export type CategoryId =
-  | 'vinos'
-  | 'cerveza'
-  | 'destilados'
-  | 'licores'
-  | 'refrescos'
-  | 'otros';
-
-export interface EventData {
-  fecha: string; // yyyy-mm-dd
-  os: string; // Nº OS
-  grupo: string; // grupo / nombre del evento (ej. BCG)
-  tipoServicio: string; // Barra libre | Cóctel | Coffee Break / Similar | Otros
-  comensales: number; // adultos barra libre
-  pvp: number; // PVP adulto (IVA incl.)
-  ninos: number; // niños barra libre
-  pvpNinos: number; // PVP niño (IVA incl.)
-  // Coste social: horas extra / personal interno × sala / cocina
-  horasExtraSala: number;
-  horasPersonalSala: number;
-  horasExtraCocina: number;
-  horasPersonalCocina: number;
-  rateExtra: number; // €/h horas extra (25 × 1,32 = 33)
-  rateInterno: number; // €/h personal interno (16 × 1,32 = 21,12)
-  // Costes varios (unidades × coste unitario)
-  lavanderiaUnd: number;
-  lavanderiaCoste: number;
-  decoracionMesas: number;
-  decoracionCoste: number;
-  climatizacionHoras: number;
-  climatizacionCoste: number;
-  iluminacionHoras: number;
-  iluminacionCoste: number;
-  imprentaPersonas: number;
-  imprentaCoste: number;
-  dotacionUnd: number;
-  dotacionCoste: number;
-  auxiliaresUnd: number;
-  auxiliaresCoste: number;
+/** Grupo = cliente = un archivo Excel. */
+export interface Grupo {
+  id: string;
+  nombre: string;
+  os: string;
+  responsable: string;
+  fechaAnalisis: string; // YYYY-MM-DD o ''
   observaciones: string;
+  createdAt?: string;
 }
 
+/** Ajustes del bot de Telegram (se guardan en el dispositivo). */
 export interface TelegramSettings {
   botToken: string;
   chatId: string;
-  /** URL base de la vista del manager (vacío = misma app, autodetectado). */
   managerUrl: string;
-}
-
-export interface HistoryEntry {
-  id: string;
-  sentAt: string;
-  event: EventData;
-  lines: OrderLine[];
-  totalCoste: number;
 }
