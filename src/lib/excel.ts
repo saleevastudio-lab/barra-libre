@@ -83,9 +83,118 @@ export async function generateExcel(
   wb.calcProperties.fullCalcOnLoad = true;
 
   const out = await wb.xlsx.writeBuffer();
-  return new Blob([out], {
+  // ExcelJS no conserva gráficas al reescribir el libro: la doughnut
+  // «Dónde va cada euro de venta neta» de la hoja Resumen se inyecta a
+  // nivel de paquete (zip) copiándola desde la plantilla.
+  const withChart = await injectResumenChart(out, buf);
+  return new Blob([withChart], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
+}
+
+/** Ancla (posición/tamaño) de la doughnut en la hoja Resumen: columna L,
+ *  fila 25, 3240000 × 1835999 EMU. Mismo sitio que en la plantilla. */
+const CHART_FRAME =
+  '<xdr:oneCellAnchor><xdr:from><xdr:col>11</xdr:col><xdr:colOff>0</xdr:colOff>' +
+  '<xdr:row>24</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>' +
+  '<xdr:ext cx="3240000" cy="1835999" />' +
+  '<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="99" name="Dónde va cada euro" />' +
+  '<xdr:cNvGraphicFramePr /></xdr:nvGraphicFramePr>' +
+  '<xdr:xfrm><a:off x="0" y="0" /><a:ext cx="0" cy="0" /></xdr:xfrm>' +
+  '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">' +
+  '<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ' +
+  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+  'r:id="rIdEuroChart" /></a:graphicData></a:graphic></xdr:graphicFrame>' +
+  '<xdr:clientData /></xdr:oneCellAnchor>';
+
+const CT_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
+const CHART_REL =
+  'http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart';
+
+/**
+ * ExcelJS conserva las imágenes de la hoja Resumen (el logo) pero descarta
+ * las gráficas. Se reinyecta la doughnut «Dónde va cada euro de venta neta»
+ * a nivel de paquete (zip): se copia chart1.xml de la plantilla y se añade
+ * su ancla al drawing que el Resumen ya tiene, más la relación y el
+ * content-type correspondientes. Los datos los lee de Q25:R29, que la
+ * plantilla rellena sola con fórmulas (=MAX(0,D28)…).
+ */
+async function injectResumenChart(
+  outBuf: ArrayBuffer,
+  tplBuf: ArrayBuffer,
+): Promise<ArrayBuffer> {
+  const JSZip = (await import('jszip')).default;
+  const gen = await JSZip.loadAsync(outBuf);
+  const tpl = await JSZip.loadAsync(tplBuf);
+  const chartPart = tpl.file('xl/charts/chart1.xml');
+  if (!chartPart) return outBuf;
+
+  // 1) Localizar la drawing del Resumen: hoja → sheetN.xml → rels → drawingN.xml.
+  const workbookXml = await gen.file('xl/workbook.xml')?.async('string');
+  const wbRelsXml = await gen.file('xl/_rels/workbook.xml.rels')?.async('string');
+  const sheetRid = workbookXml?.match(/<sheet[^>]*name="Resumen"[^>]*r:id="([^"]+)"/)?.[1];
+  const sheetTarget = sheetRid
+    ? wbRelsXml?.match(
+        new RegExp(`<Relationship[^>]*Id="${sheetRid}"[^>]*Target="([^"]+)"`),
+      )?.[1]
+    : undefined;
+  const sheetPath = sheetTarget
+    ? 'xl/' + sheetTarget.replace(/^\/xl\//, '').replace(/^\.\.\//, '')
+    : 'xl/worksheets/sheet1.xml';
+  const sheetXml = (await gen.file(sheetPath)?.async('string')) ?? '';
+  const sheetRidDraw = sheetXml.match(/<drawing r:id="([^"]+)"/)?.[1];
+  if (!sheetRidDraw) return outBuf; // el Resumen no tiene drawing (no debería pasar)
+
+  const sheetRelsPath =
+    sheetPath.replace('xl/worksheets/', 'xl/worksheets/_rels/') + '.rels';
+  const sheetRelsXml = (await gen.file(sheetRelsPath)?.async('string')) ?? '';
+  const drawTarget = sheetRelsXml.match(
+    new RegExp(`<Relationship[^>]*Id="${sheetRidDraw}"[^>]*Target="([^"]+)"`),
+  )?.[1];
+  if (!drawTarget) return outBuf;
+  const drawingPath = 'xl/drawings/' + drawTarget.replace(/^\.\.\//, '').split('/').pop();
+  const drawingRelsPath = 'xl/drawings/_rels/' + drawingPath.split('/').pop() + '.rels';
+
+  // 2) Ancla de la gráfica dentro de la drawing existente.
+  let drawingXml = (await gen.file(drawingPath)?.async('string')) ?? '';
+  if (!drawingXml.includes('</xdr:wsDr>')) return outBuf;
+  drawingXml = drawingXml.replace('</xdr:wsDr>', CHART_FRAME + '</xdr:wsDr>');
+  gen.file(drawingPath, drawingXml);
+
+  // 3) Relación drawing → chart.
+  let drawingRels = (await gen.file(drawingRelsPath)?.async('string')) ?? '';
+  if (!drawingRels.includes('charts/chart1.xml')) {
+    if (!drawingRels) {
+      drawingRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="${CT_REL}"></Relationships>`;
+    }
+    drawingRels = drawingRels.replace(
+      '</Relationships>',
+      `<Relationship Id="rIdEuroChart" Type="${CHART_REL}" Target="../charts/chart1.xml"/></Relationships>`,
+    );
+    gen.file(drawingRelsPath, drawingRels);
+  }
+
+  // 4) La parte del chart, copiada de la plantilla tal cual.
+  gen.file('xl/charts/chart1.xml', await chartPart.async('nodebuffer'));
+
+  // 5) Content type del chart.
+  const ctPath = '[Content_Types].xml';
+  const ct = (await gen.file(ctPath)?.async('string')) ?? '';
+  if (ct && !ct.includes('PartName="/xl/charts/chart1.xml"')) {
+    gen.file(
+      ctPath,
+      ct.replace(
+        '</Types>',
+        '<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>',
+      ),
+    );
+  }
+
+  return (await gen.generateAsync({
+    type: 'arraybuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  })) as ArrayBuffer;
 }
 
 function fillEvento(ws: Worksheet, ev: EventoDraft): void {
