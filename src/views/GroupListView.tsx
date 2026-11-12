@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { Plus, KeyRound, Settings as SettingsIcon } from 'lucide-react';
 import type { Grupo, TelegramSettings } from '@/lib/types';
 import { createGrupo, listGrupos, subscribeGrupos, supabaseConfigured } from '@/lib/supabase';
-import { loadSettings, saveSettings, setManagerSession } from '@/lib/store';
+import { isManagerSession, loadSettings, saveSettings, setManagerSession } from '@/lib/store';
 import { Notice, ViewHeader } from '@/views/ui';
 import { PinDialog } from '@/views/PinDialog';
 import { SettingsDialog } from '@/sections/SettingsDialog';
@@ -21,6 +21,7 @@ export function GroupListView() {
   const [os, setOs] = useState('');
   const [busy, setBusy] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
+  const [isManager, setIsManager] = useState(() => isManagerSession());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<TelegramSettings>(() => loadSettings());
   const navigate = useNavigate();
@@ -63,20 +64,24 @@ export function GroupListView() {
         subtitle="Grupos / eventos"
         right={
           <>
-            <button
-              onClick={() => setPinOpen(true)}
-              aria-label="Acceso manager"
-              className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
-            >
-              <KeyRound className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Configuración"
-              className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
-            >
-              <SettingsIcon className="h-4 w-4" />
-            </button>
+            {!isManager && (
+              <button
+                onClick={() => setPinOpen(true)}
+                aria-label="Acceso manager"
+                className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
+              >
+                <KeyRound className="h-4 w-4" />
+              </button>
+            )}
+            {isManager && (
+              <button
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Configuración"
+                className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
+              >
+                <SettingsIcon className="h-4 w-4" />
+              </button>
+            )}
           </>
         }
       />
@@ -88,6 +93,14 @@ export function GroupListView() {
         {error && <Notice msg={error} />}
 
         <section>
+          {!isManager ? (
+            <p className="border border-dashed border-border px-4 py-4 font-data text-xs uppercase tracking-wide text-muted-foreground text-center">
+              Crear grupos es tarea del manager (icono de la llave arriba a
+              la derecha). Los supervisores solo rellenan consumiciones de los
+              grupos existentes.
+            </p>
+          ) : (
+          <>
           <button
             onClick={() => setCreating((v) => !v)}
             className="w-full h-12 border border-dashed border-border font-data text-xs uppercase tracking-wide hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -128,6 +141,8 @@ export function GroupListView() {
               </button>
             </div>
           )}
+          </>
+          )}
         </section>
 
         <section aria-label="Grupos">
@@ -138,7 +153,9 @@ export function GroupListView() {
             <p className="font-data text-sm text-muted-foreground">Cargando…</p>
           ) : grupos.length === 0 ? (
             <p className="font-data text-sm text-muted-foreground border border-dashed border-border px-4 py-8 text-center">
-              Todavía no hay grupos. Crea el primero con el botón de arriba.
+              {isManager
+                ? 'Todavía no hay grupos. Crea el primero con el botón de arriba.'
+                : 'Todavía no hay grupos. El manager los creará con su acceso.'}
             </p>
           ) : (
             <ul className="border border-border divide-y divide-border">
@@ -173,6 +190,7 @@ export function GroupListView() {
         onClose={() => setPinOpen(false)}
         onSuccess={() => {
           setManagerSession(true);
+          setIsManager(true);
           setPinOpen(false);
         }}
       />
