@@ -8,9 +8,14 @@ import {
   VARIOS_CONCEPTOS,
 } from './catalog';
 
-// La plantilla viaja como texto base64 (.b64) para poder publicarse en
-// GitHub Pages sin depender de binarios; se decodifica aquí en el cliente.
+// La plantilla se carga en este orden:
+//   1. public/plantilla-eventos.b64 (texto base64, solo en desarrollo local)
+//   2. Supabase Storage (bucket público 'plantilla'): fuente de verdad en
+//      producción, porque el binario xlsx no puede versionarse en el repo
+//      (la API de GitHub solo acepta contenido de texto).
 const TEMPLATE_URL = 'plantilla-eventos.b64';
+const TEMPLATE_STORAGE_URL =
+  'https://sowcvesivcrgfictgzrf.supabase.co/storage/v1/object/public/plantilla/plantilla-eventos.xlsx';
 
 function toDate(fecha: string): Date {
   const [y, m, d] = fecha.split('-').map(Number);
@@ -24,17 +29,19 @@ function toDate(fecha: string): Date {
 let templatePromise: Promise<ArrayBuffer> | null = null;
 function loadTemplate(): Promise<ArrayBuffer> {
   if (!templatePromise) {
-    templatePromise = fetch(TEMPLATE_URL)
-      .then((r) => {
-        if (!r.ok) throw new Error('No se pudo cargar la plantilla Excel');
-        return r.text();
-      })
-      .then((b64) => {
+    templatePromise = fetch(TEMPLATE_URL).then(async (r) => {
+      if (r.ok) {
+        const b64 = await r.text();
         const bin = atob(b64.replace(/\s+/g, ''));
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         return bytes.buffer;
-      });
+      }
+      // Sin .b64 local (producción): la plantilla vive en Supabase Storage.
+      const res = await fetch(TEMPLATE_STORAGE_URL);
+      if (!res.ok) throw new Error('No se pudo cargar la plantilla Excel');
+      return res.arrayBuffer();
+    });
   }
   return templatePromise;
 }
