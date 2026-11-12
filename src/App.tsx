@@ -1,18 +1,25 @@
 import { Route, Routes } from 'react-router';
-import { SupervisorView } from '@/views/SupervisorView';
-import { ManagerView } from '@/views/ManagerView';
+import { GroupListView } from '@/views/GroupListView';
+import { GroupView } from '@/views/GroupView';
+import { EscandalloView } from '@/views/EscandalloView';
+import { ManagerEventView } from '@/views/ManagerEventView';
 
 /**
- * Dos vistas en la misma app (enrutado por hash):
- *   #/            → supervisor: grupo + consumición + envío a Telegram
- *   #/manager?d=… → manager: datos precargados desde el botón del mensaje
+ * Flujo por grupos (enrutado por hash):
+ *   #/                        → lista de grupos + crear grupo (manager)
+ *   #/g/:gid                  → grupo: eventos, totales, Excel (manager)
+ *   #/g/:gid/e/:eid/comida    → escandallo comida/cocina (supervisores)
+ *   #/g/:gid/e/:eid/bebida    → escandallo bebida/barra (supervisores)
+ *   #/g/:gid/e/:eid/manager   → datos del evento (manager, con PIN)
  */
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<SupervisorView />} />
-      <Route path="/manager" element={<ManagerView />} />
-      <Route path="*" element={<SupervisorView />} />
+      <Route path="/" element={<GroupListView />} />
+      <Route path="/g/:gid" element={<GroupView />} />
+      <Route path="/g/:gid/e/:eid/:kind" element={<EscandalloView />} />
+      <Route path="/g/:gid/e/:eid/manager" element={<ManagerEventView />} />
+      <Route path="*" element={<GroupListView />} />
     </Routes>
   );
 }
