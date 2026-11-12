@@ -91,10 +91,53 @@ export function previewEvento(e: EventoDraft): EventoPreview {
 
 export function previewGrupo(eventos: EventoDraft[]) {
   const ps = eventos.map(previewEvento);
-  const neta = ps.reduce((a, p) => a + p.neta, 0);
-  const coste = ps.reduce((a, p) => a + p.costeTotal, 0);
+  const sum = (k: keyof EventoPreview) => ps.reduce((a, p) => a + (p[k] as number), 0);
+  const neta = sum('neta');
+  const costeComida = sum('costeComida');
+  const costeBebida = sum('costeBebida');
+  const costePersonal = sum('costePersonal');
+  const costeVarios = sum('costeVarios');
+  const coste = costeComida + costeBebida + costePersonal + costeVarios;
   const beneficio = neta - coste;
-  return { neta, coste, beneficio, margen: neta > 0 ? beneficio / neta : 0 };
+  return {
+    neta,
+    coste,
+    beneficio,
+    margen: neta > 0 ? beneficio / neta : 0,
+    costeComida,
+    costeBebida,
+    costePersonal,
+    costeVarios,
+  };
+}
+
+export type GrupoPreview = ReturnType<typeof previewGrupo>;
+
+/** Datos para la doughnut «Dónde va cada euro de venta neta» (mismos
+ *  colores que la gráfica de la plantilla Excel). */
+export interface EuroSlice {
+  nombre: string;
+  valor: number;
+  color: string;
+}
+
+export function euroSlices(p: {
+  neta: number;
+  costeComida: number;
+  costeBebida: number;
+  costePersonal: number;
+  costeVarios: number;
+}): EuroSlice[] {
+  if (p.neta <= 0) return [];
+  const beneficio =
+    p.neta - p.costeComida - p.costeBebida - p.costePersonal - p.costeVarios;
+  return [
+    { nombre: 'Coste comida', valor: p.costeComida, color: '#E0A800' },
+    { nombre: 'Coste bebida', valor: p.costeBebida, color: '#7C7C7C' },
+    { nombre: 'Personal', valor: p.costePersonal, color: '#B9B2A0' },
+    { nombre: 'Costes varios', valor: p.costeVarios, color: '#D8C9A3' },
+    { nombre: 'Beneficio', valor: Math.max(0, beneficio), color: '#3F7D4E' },
+  ].filter((s) => s.valor > 0.005);
 }
 
 export { VARIOS_CONCEPTOS };
