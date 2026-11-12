@@ -7,8 +7,8 @@ dist
 .playwright-cli
 .test
 
-# Generado por scripts/gen-assets.mjs antes de dev/build
-public/barra-libre-template.b64
+# public/plantilla-eventos.b64 se versiona (la plantilla xlsx no puede subirse
+# como binario por la API); gen-assets.mjs lo regenera en local desde el xlsx.
 public/icons/*.png
 
 # Componentes shadcn: se regeneran con el CLI (ver README)
