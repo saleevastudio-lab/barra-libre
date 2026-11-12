@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type {
   CategoriaIngreso,
   EventoDraft,
@@ -10,10 +10,11 @@ import type {
   VariosLine,
 } from '@/lib/types';
 import { MAX_INGRESOS, TIPOS_SERVICIO, VARIOS_CONCEPTOS } from '@/lib/catalog';
-import { previewEvento, type EventoPreview } from '@/lib/calc';
+import { euroSlices, previewEvento, type EventoPreview } from '@/lib/calc';
 import { getGrupo, listEventos, supabaseConfigured, updateEvento } from '@/lib/supabase';
 import { isManagerSession } from '@/lib/store';
 import { eur, Notice, ViewHeader } from '@/views/ui';
+import { EuroChart } from '@/views/EuroChart';
 import { PinDialog } from '@/views/PinDialog';
 
 const emptyIngreso = (): IncomeLine => ({
@@ -61,10 +62,12 @@ export function ManagerEventView() {
   const [varios, setVarios] = useState<VariosLine[]>([]);
 
   const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
+    loadedRef.current = false;
     if (!supabaseConfigured) return;
     let alive = true;
     getGrupo(gid).then((g) => alive && setGrupo(g));
@@ -82,6 +85,8 @@ export function ManagerEventView() {
         setIngresos(ev.ingresos.map((l) => ({ ...l })));
         setPersonal({ ...ev.personal });
         setVarios(ev.varios.map((v) => ({ ...v })));
+        // Autoguardado: a partir de aquí cada cambio se persiste solo.
+        loadedRef.current = true;
       })
       .catch(() => {});
     return () => {
@@ -109,9 +114,10 @@ export function ManagerEventView() {
     [eid, gid, evento, nombre, tipo, fecha, duracion, mesas, ingresos, personal, varios],
   );
 
-  const save = async () => {
+  const persist = async () => {
     if (!evento) return;
     setSaving(true);
+    setSaveState('saving');
     setError(null);
     try {
       const limpios = ingresos.filter(
@@ -127,15 +133,23 @@ export function ManagerEventView() {
         personal,
         varios,
       });
-      setIngresos(limpios);
-      setNotice('Datos del evento guardados.');
-      setTimeout(() => setNotice(null), 4000);
+      setSaveState('saved');
     } catch (e) {
+      setSaveState('error');
       setError(e instanceof Error ? e.message : 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
   };
+
+  // Autoguardado: cualquier cambio se guarda solo (800 ms después de la
+  // última pulsación) para no perder datos.
+  useEffect(() => {
+    if (!loadedRef.current || !evento) return;
+    const t = setTimeout(persist, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nombre, tipo, fecha, duracion, mesas, ingresos, personal, varios]);
 
   const num = (
     v: string,
@@ -156,14 +170,26 @@ export function ManagerEventView() {
         right={
           <>
             {isManager && (
-              <button
-                onClick={save}
-                disabled={saving}
-                className="h-9 px-3 inline-flex items-center gap-2 bg-primary text-primary-foreground font-data text-xs uppercase tracking-wide font-bold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer disabled:cursor-default"
+              <span
+                role="status"
+                className={`h-9 px-3 inline-flex items-center font-data text-[10px] uppercase tracking-wide ${
+                  saveState === 'saving'
+                    ? 'text-muted-foreground'
+                    : saveState === 'saved'
+                      ? 'text-primary'
+                      : saveState === 'error'
+                        ? 'text-destructive'
+                        : 'text-muted-foreground/50'
+                }`}
               >
-                <Save className="h-4 w-4" />
-                {saving ? 'Guardando…' : 'Guardar'}
-              </button>
+                {saving
+                  ? 'Guardando…'
+                  : saveState === 'saved'
+                    ? '✓ Guardado'
+                    : saveState === 'error'
+                      ? 'Error al guardar'
+                      : 'Autoguardado'}
+              </span>
             )}
             <Link
               to={`/g/${gid}`}
@@ -181,7 +207,6 @@ export function ManagerEventView() {
           <Notice msg="Supabase no configurado: los cambios no se guardarán." />
         )}
         {error && <Notice msg={error} />}
-        {notice && <Notice msg={notice} />}
 
         {!isManager ? (
           <section className="border border-border p-6 text-center flex flex-col gap-4">
@@ -385,13 +410,13 @@ export function ManagerEventView() {
               <h2 className="font-data text-xs uppercase tracking-widest text-muted-foreground">
                 Personal (horas)
               </h2>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(
                   [
-                    ['extraSala', 'Extra sala'],
-                    ['internoSala', 'Interno sala'],
-                    ['extraCocina', 'Extra cocina'],
-                    ['internoCocina', 'Interno cocina'],
+                    ['extraSala', 'Horas extra Sala'],
+                    ['internoSala', 'Personal interno - Servicio de Sala'],
+                    ['extraCocina', 'Horas extra Cocina'],
+                    ['internoCocina', 'Personal interno - Cocina'],
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="flex flex-col gap-1">
@@ -481,6 +506,16 @@ export function ManagerEventView() {
                 <Row label="Varios" value={eur(preview.costeVarios)} />
                 <Row label="Beneficio" value={eur(preview.beneficio)} strong />
               </dl>
+              <EuroChart
+                slices={euroSlices({
+                  neta: preview.neta,
+                  costeComida: preview.costeComida,
+                  costeBebida: preview.costeBebida,
+                  costePersonal: preview.costePersonal,
+                  costeVarios: preview.costeVarios,
+                })}
+                neta={preview.neta}
+              />
               <div className={`px-4 py-3 flex items-center justify-between ${semaforo}`}>
                 <span className="font-data text-xs uppercase tracking-wide font-bold">
                   {ESTADO_TEXTO[preview.estado]}
