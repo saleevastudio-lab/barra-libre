@@ -13,7 +13,7 @@ import type { EventoDraft, Grupo } from '@/lib/types';
 import {
   MAX_EVENTOS_POR_GRUPO,
 } from '@/lib/catalog';
-import { previewEvento, previewGrupo } from '@/lib/calc';
+import { euroSlices, previewEvento, previewGrupo } from '@/lib/calc';
 import {
   createEvento,
   getGrupo,
@@ -26,6 +26,7 @@ import {
 import { generateExcel, excelFileName } from '@/lib/excel';
 import { isManagerSession, setManagerSession } from '@/lib/store';
 import { eur, Notice, ViewHeader } from '@/views/ui';
+import { EuroChart } from '@/views/EuroChart';
 import { PinDialog } from '@/views/PinDialog';
 
 const ESTADO_LABEL: Record<string, string> = {
@@ -134,6 +135,20 @@ export function GroupView() {
     setError(null);
     setNotice(null);
     try {
+      // Avisos de datos relevantes que faltan (no bloquean la generación).
+      const avisos: string[] = [];
+      if (!grupo.responsable.trim()) avisos.push('falta el responsable comercial del grupo');
+      if (!grupo.fechaAnalisis) avisos.push('falta la fecha del análisis del grupo');
+      for (const ev of eventos) {
+        const etiqueta = ev.nombre?.trim() || `Evento ${ev.orden}`;
+        if (!ev.tipo) avisos.push(`«${etiqueta}» no tiene tipo de servicio`);
+        if (!ev.fecha) avisos.push(`«${etiqueta}» no tiene fecha`);
+        const p = previewEvento(ev);
+        if (p.neta <= 0) avisos.push(`«${etiqueta}» no tiene ingresos con importe`);
+      }
+      if (avisos.length > 0) {
+        setNotice(`Aviso: ${avisos.join(' · ')}.`);
+      }
       const blob = await generateExcel(grupo, eventos);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -141,7 +156,10 @@ export function GroupView() {
       a.click();
       URL.revokeObjectURL(a.href);
       const url = await uploadExcel(grupo.nombre || 'GRUPO', blob);
-      setNotice(`Excel guardado en la nube: ${url}`);
+      setNotice(
+        (avisos.length > 0 ? `Aviso: ${avisos.join(' · ')}. — ` : '') +
+          `Excel guardado en la nube: ${url}`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo generar el Excel');
     } finally {
@@ -264,6 +282,9 @@ export function GroupView() {
               </dd>
             </div>
           </dl>
+          <div className="border border-border border-t-0">
+            <EuroChart slices={euroSlices(totales)} neta={totales.neta} />
+          </div>
         </section>
 
         <section aria-label="Eventos del grupo">
