@@ -7,8 +7,9 @@ dist
 .playwright-cli
 .test
 
-# public/plantilla-eventos.b64 se versiona (la plantilla xlsx no puede subirse
-# como binario por la API); gen-assets.mjs lo regenera en local desde el xlsx.
+# public/plantilla-eventos.b64 se genera en local desde el xlsx (no versionado;
+# en producción la plantilla se descarga de Supabase Storage, bucket 'plantilla').
+public/plantilla-eventos.b64
 public/icons/*.png
 
 # Componentes shadcn: se regeneran con el CLI (ver README)
