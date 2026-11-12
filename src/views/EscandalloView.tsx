@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
-import { ArrowLeft, Plus, Send, Trash2 } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router';
+import { ArrowLeft, CalendarPlus, Plus, Send, Trash2 } from 'lucide-react';
 import type { CostLine, EventoDraft, Grupo, TelegramSettings } from '@/lib/types';
-import { DRINKS, MAX_LINEAS_ESCANDALLO, PLATOS } from '@/lib/catalog';
-import { getGrupo, listEventos, supabaseConfigured, updateEvento } from '@/lib/supabase';
+import { DRINKS, MAX_EVENTOS_POR_GRUPO, MAX_LINEAS_ESCANDALLO, PLATOS, TIPOS_SERVICIO } from '@/lib/catalog';
+import { createEvento, getGrupo, listEventos, supabaseConfigured, updateEvento } from '@/lib/supabase';
 import { buildConstancia, sendTelegram } from '@/lib/telegram';
 import { loadSettings } from '@/lib/store';
 import { eur, Notice, ViewHeader } from '@/views/ui';
@@ -17,16 +17,22 @@ type Kind = 'comida' | 'bebida';
  */
 export function EscandalloView() {
   const { gid = '', eid = '', kind = 'comida' } = useParams();
+  const navigate = useNavigate();
   const seccion: Kind = kind === 'bebida' ? 'bebida' : 'comida';
 
   const [grupo, setGrupo] = useState<Grupo | null>(null);
   const [evento, setEvento] = useState<EventoDraft | null>(null);
+  const [eventos, setEventos] = useState<EventoDraft[]>([]);
   const [lines, setLines] = useState<CostLine[]>([]);
   const [editingQty, setEditingQty] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevoTipo, setNuevoTipo] = useState('');
+  const loadedRef = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showNotice = (msg: string) => {
@@ -36,15 +42,18 @@ export function EscandalloView() {
   };
 
   useEffect(() => {
+    loadedRef.current = false;
     if (!supabaseConfigured) return;
     let alive = true;
     getGrupo(gid).then((g) => alive && setGrupo(g));
     listEventos(gid)
       .then((evs) => {
         if (!alive) return;
+        setEventos(evs);
         const ev = evs.find((e) => e.id === eid);
         setEvento(ev ?? null);
         setLines(ev ? [...ev[seccion]] : []);
+        loadedRef.current = true;
       })
       .catch((e) => alive && setError(e instanceof Error ? e.message : 'Error de carga'));
     return () => {
@@ -84,19 +93,44 @@ export function EscandalloView() {
     setLine(i, patch);
   };
 
-  const save = async () => {
+  const persist = async () => {
     if (!evento) return;
-    setSaving(true);
+    setSaveState('saving');
     setError(null);
     try {
       const limpias = lines.filter((l) => l.nombre.trim() !== '');
       await updateEvento(evento.id, { [seccion]: limpias });
-      setLines(limpias);
-      showNotice('Guardado en el borrador compartido.');
+      setSaveState('saved');
     } catch (e) {
+      setSaveState('error');
       setError(e instanceof Error ? e.message : 'No se pudo guardar');
-    } finally {
-      setSaving(false);
+    }
+  };
+
+  // Autoguardado: cada cambio en las líneas se guarda solo (600 ms después
+  // de la última pulsación) para no perder datos.
+  useEffect(() => {
+    if (!loadedRef.current || !evento) return;
+    const t = setTimeout(persist, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines]);
+
+  /** Supervisor: crea otro evento del grupo (solo nombre y tipo; el resto
+   *  lo rellena el manager). */
+  const crearEvento = async () => {
+    setError(null);
+    try {
+      const ev = await createEvento(gid, Math.max(0, ...eventos.map((e) => e.orden)) + 1, {
+        nombre: nuevoNombre,
+        tipo: nuevoTipo,
+      });
+      setNuevoOpen(false);
+      setNuevoNombre('');
+      setNuevoTipo('');
+      navigate(`/g/${gid}/e/${ev.id}/comida`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo crear el evento');
     }
   };
 
@@ -143,6 +177,26 @@ export function EscandalloView() {
         }
         right={
           <>
+            <span
+              role="status"
+              className={`h-9 px-2 inline-flex items-center font-data text-[10px] uppercase tracking-wide ${
+                saveState === 'saving'
+                  ? 'text-muted-foreground'
+                  : saveState === 'saved'
+                    ? 'text-primary'
+                    : saveState === 'error'
+                      ? 'text-destructive'
+                      : 'text-muted-foreground/50'
+              }`}
+            >
+              {saveState === 'saving'
+                ? 'Guardando…'
+                : saveState === 'saved'
+                  ? '✓ Guardado'
+                  : saveState === 'error'
+                    ? 'Error al guardar'
+                    : 'Autoguardado'}
+            </span>
             <button
               onClick={send}
               disabled={sending || total <= 0}
@@ -151,13 +205,6 @@ export function EscandalloView() {
             >
               <Send className="h-4 w-4" />
               <span className="hidden sm:inline">Constancia</span>
-            </button>
-            <button
-              onClick={save}
-              disabled={saving}
-              className="h-9 px-3 inline-flex items-center gap-2 bg-primary text-primary-foreground font-data text-xs uppercase tracking-wide font-bold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer disabled:cursor-default"
-            >
-              {saving ? 'Guardando…' : 'Guardar'}
             </button>
             <Link
               to={`/g/${gid}`}
@@ -300,6 +347,59 @@ export function EscandalloView() {
             <Plus className="h-4 w-4" /> Añadir línea
           </button>
         )}
+
+        <section className="border border-border">
+          <button
+            onClick={() => setNuevoOpen((v) => !v)}
+            className="w-full h-12 px-4 inline-flex items-center justify-center gap-2 border border-dashed border-border font-data text-xs uppercase tracking-wide hover:border-primary hover:text-primary transition-colors cursor-pointer"
+          >
+            <CalendarPlus className="h-4 w-4" />
+            Nuevo evento del grupo ({eventos.length}/{MAX_EVENTOS_POR_GRUPO})
+          </button>
+          {nuevoOpen && (
+            <div className="p-4 flex flex-col gap-3 border-t border-border">
+              <p className="font-data text-[10px] uppercase tracking-wide text-muted-foreground">
+                Los supervisores solo eligen nombre y tipo de servicio; el
+                manager completará el resto de los datos del evento.
+              </p>
+              <label className="flex flex-col gap-1">
+                <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+                  Nombre del evento
+                </span>
+                <input
+                  value={nuevoNombre}
+                  onChange={(e) => setNuevoNombre(e.target.value)}
+                  placeholder={`Evento ${Math.max(0, ...eventos.map((e) => e.orden)) + 1}`}
+                  className="h-11 px-3 bg-card border border-input font-data text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+                  Tipo de servicio
+                </span>
+                <select
+                  value={nuevoTipo}
+                  onChange={(e) => setNuevoTipo(e.target.value)}
+                  className="h-11 px-3 bg-card border border-input font-data text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">— elegir —</option>
+                  {TIPOS_SERVICIO.map((t) => (
+                    <option key={t.short} value={t.short}>
+                      {t.short} (objetivo {Math.round(t.objetivo * 100)} %)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                onClick={crearEvento}
+                disabled={eventos.length >= MAX_EVENTOS_POR_GRUPO}
+                className="h-12 bg-primary text-primary-foreground font-data text-xs uppercase tracking-wide font-bold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer disabled:cursor-default"
+              >
+                Crear evento y rellenar comida
+              </button>
+            </div>
+          )}
+        </section>
 
         <div className="flex justify-between items-baseline border border-border bg-card px-4 py-3 mt-2">
           <span className="font-data text-xs uppercase tracking-widest text-muted-foreground">
