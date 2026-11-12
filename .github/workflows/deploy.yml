@@ -24,8 +24,6 @@ jobs:
           node-version: 22
       - name: Generar componentes UI (shadcn)
         run: npx shadcn@latest add button dialog input label separator sheet skeleton textarea toggle tooltip -y -o
-      - name: Generar plantilla base64
-        run: base64 -w 0 "public/barra-libre-template.xlsm" > public/barra-libre-template.b64
       - name: Instalar dependencias
         run: npm install
       - name: Build
@@ -33,6 +31,9 @@ jobs:
         env:
           VITE_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           VITE_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
