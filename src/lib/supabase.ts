@@ -84,11 +84,17 @@ export async function listEventos(grupoId: string): Promise<EventoDraft[]> {
 export async function createEvento(
   grupoId: string,
   orden: number,
+  init?: { nombre?: string; tipo?: string },
 ): Promise<EventoDraft> {
   if (!supabase) throw new Error('Supabase no configurado');
   const { data, error } = await supabase
     .from('eventos')
-    .insert({ grupo_id: grupoId, orden, nombre: `Evento ${orden}` })
+    .insert({
+      grupo_id: grupoId,
+      orden,
+      nombre: init?.nombre?.trim() || `Evento ${orden}`,
+      tipo: init?.tipo ?? '',
+    })
     .select()
     .single();
   if (error) throw new Error(error.message);
