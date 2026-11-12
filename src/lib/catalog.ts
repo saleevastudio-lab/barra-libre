@@ -1,133 +1,120 @@
-import type { CategoryId, Drink } from './types';
+// Catálogos y tipos de servicio oficiales (coherentes con la hoja
+// Parámetros / Catálogo de "Plantilla eventos.xlsx").
 
-export const CATEGORIES: { id: CategoryId; label: string }[] = [
-  { id: 'vinos', label: 'Vinos' },
-  { id: 'cerveza', label: 'Cerveza' },
-  { id: 'destilados', label: 'Destilados' },
-  { id: 'licores', label: 'Licores' },
-  { id: 'refrescos', label: 'Refrescos y zumos' },
-  { id: 'otros', label: 'Otros' },
-];
-
-// Catálogo extraído de la hoja "Datos Bebida" del libro original.
-// Costes por unidad tomados del ejemplo real de consumo (hoja "Bebida").
-// Catálogo oficial: nombres y costes exactos de la hoja "Datos Bebida"
-// de los P&L reales (los managers escriben estos mismos artículos y costes).
-const RAW: [string, CategoryId, number][] = [
-  ['Sambuca', 'licores', 9.78],
-  ['Patxaran Baines', 'licores', 13.45],
-  ['Baileys', 'licores', 9.44],
-  ['Jagermaister', 'licores', 9.74],
-  ['Limonccello Vila Massa', 'licores', 9.66],
-  ['Absolut', 'destilados', 11.05],
-  ['Bombay Saphire', 'destilados', 13.41],
-  ['White Label', 'destilados', 11.13],
-  ['Bacardi ', 'destilados', 12.65],
-  ['Santa Teresa Reserva', 'destilados', 10.85],
-  ['Tequila Patron Silver', 'destilados', 35.38],
-  ['Refresco Coca Cola ', 'refrescos', 0.6],
-  ['Refresco Coca Cola Zero', 'refrescos', 0.61],
-  ['Refresco Fanta Limon', 'refrescos', 0.53],
-  ['Refresco Fanta Naranja ', 'refrescos', 0.53],
-  ['Refresco Sprite', 'refrescos', 0.55],
-  ['Refresco Tonica Fever Tree Indian', 'refrescos', 0.75],
-  ['Refresco Soda Fever Tree ', 'refrescos', 0.81],
-  ['Aquarius Naranja', 'refrescos', 0.705],
-  ['AquariusLimon', 'refrescos', 0.705],
-  ['Nesta', 'refrescos', 0.8],
-  ['Zumo Maid ', 'refrescos', 0.58],
-  ['Cafe capsulas', 'otros', 0.4],
-  ['Infusion', 'otros', 0.32],
-  ['Leche semi 1,5', 'otros', 1.45],
-  ['Barril', 'cerveza', 49.87],
-  ['cerveza 0,0 ', 'cerveza', 0.84375],
-  ['Flo Blanco ', 'vinos', 3],
-  ['melior tinto', 'vinos', 4.95],
-  ['roger de flor', 'vinos', 2.14],
-];
-
-export const DRINKS: Drink[] = RAW.map(([name, category, unitCost], i) => {
-  // Los refrescos y zumos se contabilizan por caja (24 uds) desde el inicio:
-  // así el supervisor no tiene que cambiar la unidad en cada evento.
-  const caja = category === 'refrescos';
-  return {
-    id: `d${i}`,
-    name,
-    category,
-    unitCost: caja ? Math.round(unitCost * 24 * 100) / 100 : unitCost,
-    unit: caja ? ('caja' as const) : ('ud' as const),
-  };
-});
-
-// Tipos de servicio oficiales con su clave (nº que va en Bebida!H6) y el
-// reparto comida/bebida que aplica la plantilla (I = comida ROUNDUP,
-// J = bebida ROUNDDOWN).
-export const SERVICE_TYPES: {
-  label: string;
-  clave: number;
-  comida: number;
-  bebida: number;
-}[] = [
-  { label: 'Menú de Empresa', clave: 1, comida: 0.8, bebida: 0.2 },
-  { label: 'Paquete Romance', clave: 2, comida: 0.62, bebida: 0.38 },
-  { label: 'Banquete Gala', clave: 3, comida: 0.7, bebida: 0.3 },
-  { label: 'Cóctel', clave: 4, comida: 0.7, bebida: 0.3 },
-  { label: 'Coffee Break', clave: 5, comida: 0.85, bebida: 0.15 },
-  { label: 'Barra Libre', clave: 6, comida: 0, bebida: 1 },
-  { label: 'Otras Opciones', clave: 7, comida: 1, bebida: 0 },
-];
-
-const norm = (s: string) =>
-  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-/** Clave (1-7) para un tipo de servicio; por defecto 6 (Barra Libre). */
-export function claveForTipo(tipo: string | undefined): number {
-  const n = norm(tipo ?? '');
-  if (n.includes('menu de empresa')) return 1;
-  if (n.includes('romance')) return 2;
-  if (n.includes('banquete') || n.includes('gala')) return 3;
-  if (n.includes('coctel') || n.includes('cocktail')) return 4;
-  if (n.includes('coffee')) return 5;
-  if (n.startsWith('otr')) return 7;
-  return 6; // 'barra libre' y cualquier valor desconocido
+export interface CatalogDrink {
+  id: string;
+  name: string;
+  /** Coste por unidad de uso (€), como en el catálogo del Excel. */
+  unitCost: number;
+  /** 'caja' = se cuenta por caja de 24 en la app; el Excel recibe unidades. */
+  unit: 'ud' | 'caja';
 }
 
-/** Normaliza un tipo de servicio (guardado o recibido) al label oficial. */
-export function normalizeTipo(tipo: string | undefined): string {
-  const n = norm(tipo ?? '');
-  const exact = SERVICE_TYPES.find((s) => norm(s.label) === n);
-  if (exact) return exact.label;
-  return SERVICE_TYPES.find((s) => s.clave === claveForTipo(tipo))!.label;
+// Catálogo de bebidas (hoja "Catálogo" de la plantilla). Los refrescos se
+// trabajan por caja (×24) en la app para ir más rápido; al escribir el
+// Excel se convierte a unidades.
+const RAW: [string, number, 'ud' | 'caja'][] = [
+  ['Sambuca', 9.78, 'ud'],
+  ['Patxaran Baines', 13.45, 'ud'],
+  ['Baileys', 9.44, 'ud'],
+  ['Jagermaister', 9.74, 'ud'],
+  ['Limonccello Vila Massa', 9.66, 'ud'],
+  ['Absolut', 11.05, 'ud'],
+  ['Bombay Saphire', 13.41, 'ud'],
+  ['White Label', 11.13, 'ud'],
+  ['Bacardi', 12.65, 'ud'],
+  ['Santa Teresa Reserva', 10.85, 'ud'],
+  ['Tequila Patron Silver', 35.38, 'ud'],
+  ['Refresco Coca Cola', 0.6, 'caja'],
+  ['Refresco Coca Cola Zero', 0.61, 'caja'],
+  ['Refresco Fanta Limon', 0.53, 'caja'],
+  ['Refresco Fanta Naranja', 0.53, 'caja'],
+  ['Refresco Sprite', 0.55, 'caja'],
+  ['Refresco Tonica Fever Tree Indian', 0.75, 'caja'],
+  ['Refresco Soda Fever Tree', 0.81, 'caja'],
+  ['Aquarius Naranja', 0.705, 'caja'],
+  ['Aquarius Limon', 0.705, 'caja'],
+  ['Nesta', 0.8, 'caja'],
+  ['Zumo Maid', 0.58, 'caja'],
+  ['Barril', 49.87, 'ud'],
+  ['Cerveza 0,0', 0.84375, 'caja'],
+  ['Flo Blanco', 3, 'ud'],
+  ['Melior tinto', 4.95, 'ud'],
+  ['Roger de Flor', 2.14, 'ud'],
+  ['Cafe capsulas', 0.4, 'ud'],
+  ['Infusion', 0.32, 'ud'],
+  ['Leche semi 1,5', 1.45, 'ud'],
+];
+
+export const DRINKS: CatalogDrink[] = RAW.map(([name, unitCost, unit], i) => ({
+  id: `d${i}`,
+  name,
+  unitCost,
+  unit,
+}));
+
+/** Platos sugeridos del catálogo de comida (sin coste: se rellena a mano). */
+export const PLATOS: string[] = [
+  'Crujiente de parmesano con carpaccio de ternera y trufa',
+  'Gazpacho de remolacha con anchoa y brocheta de pimiento asado',
+  'Terrina de ensaladilla rusa con ventresca de atun',
+  'Croquetas de marisco con alioli de erizo de mar',
+  'Gamba en tempura con mayonesa agridulce',
+  'Ensalada de gambas con huevas de arenque y microbrotes',
+  'Lomo de Merluza asado con azafran esparragos al diente y salsa',
+  'Solomillo de ternera con verduras y salsa aromatica',
+  'Coulant de chocolate negro con vainilla y fruta de la pasion',
+];
+
+// Tipos de servicio (hoja Parámetros, B7:F12). El Excel valida contra la
+// etiqueta larga; la app trabaja con el nombre corto.
+export interface TipoServicio {
+  /** Etiqueta oficial de la plantilla (celda C6 de cada Evento). */
+  full: string;
+  /** Nombre corto (columna F de Parámetros / Resumen). */
+  short: string;
+  /** Objetivo de margen operacional (Parámetros!E7:E12). */
+  objetivo: number;
 }
 
-export const DEFAULT_EVENT = {
-  fecha: new Date().toISOString().slice(0, 10),
-  os: '',
-  grupo: '',
-  tipoServicio: 'Barra Libre' as string,
-  comensales: 0,
-  pvp: 0,
-  ninos: 0,
-  pvpNinos: 0,
-  horasExtraSala: 0,
-  horasPersonalSala: 52,
-  horasExtraCocina: 0,
-  horasPersonalCocina: 32,
-  rateExtra: 33,
-  rateInterno: 21.12,
-  lavanderiaUnd: 8,
-  lavanderiaCoste: 1.5,
-  decoracionMesas: 0,
-  decoracionCoste: 0,
-  climatizacionHoras: 0,
-  climatizacionCoste: 0,
-  iluminacionHoras: 0,
-  iluminacionCoste: 0,
-  imprentaPersonas: 0,
-  imprentaCoste: 0,
-  dotacionUnd: 0,
-  dotacionCoste: 0,
-  auxiliaresUnd: 0,
-  auxiliaresCoste: 0,
-  observaciones: '',
-};
+export const TIPOS_SERVICIO: TipoServicio[] = [
+  { full: 'Coffee breaks & servicios similares', short: 'Coffee break', objetivo: 0.6 },
+  { full: 'Cócteles & servicios similares', short: 'Cóctel', objetivo: 0.45 },
+  { full: 'Almuerzos & cenas de empresa (buffet / menú servido)', short: 'Almuerzo / cena empresa', objetivo: 0.3 },
+  { full: 'Banquetes / galas & servicios similares', short: 'Banquete / gala', objetivo: 0.45 },
+  { full: 'Banquetes de boda (Romance)', short: 'Boda', objetivo: 0.3 },
+  { full: 'Barras libres', short: 'Barra libre', objetivo: 0.7 },
+];
+
+export const CONCEPTOS_INGRESO = [
+  'Menú / banquete',
+  'Aperitivo',
+  'Cóctel',
+  'Coffee break',
+  'Almuerzo de trabajo',
+  'Cena de gala',
+  'Barra libre / open bar',
+  'Alquiler de sala',
+  'Otros',
+];
+
+/** Los 9 conceptos fijos de costes varios (hoja Evento, filas 90-98). */
+export const VARIOS_CONCEPTOS = [
+  'Lavandería',
+  'Decoración de mesa',
+  'Climatización',
+  'Iluminación',
+  'Imprenta',
+  'Dotación (roturas)',
+  'Artículos auxiliares',
+  'Audiovisuales',
+  'Rental',
+];
+
+/** Tarifas de personal (Parámetros!E17:E20): 25×1,32 y 16×1,32. */
+export const RATE_EXTRA = 33;
+export const RATE_INTERNO = 21.12;
+
+export const MAX_EVENTOS_POR_GRUPO = 8;
+export const MAX_INGRESOS = 6;
+export const MAX_LINEAS_ESCANDALLO = 25;
