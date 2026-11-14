@@ -13,7 +13,7 @@ type Kind = 'comida' | 'bebida';
 /**
  * Editor de escandallo (comida = cocina / bebida = barra) de un evento.
  * Los supervisores rellenan solo cantidades; el coste se toma del catálogo
- * automáticamente (los refrescos se cuentan por cajas de 24).
+ * automáticamente (los refrescos y zumos pueden contarse por cajas de 24).
  */
 export function EscandalloView() {
   const { gid = '', eid = '', kind = 'comida' } = useParams();
@@ -71,13 +71,24 @@ export function EscandalloView() {
     () =>
       lines.reduce((a, l) => {
         if (!l.nombre.trim() || l.cantidad <= 0) return a;
-        return a + l.cantidad * (l.coste ?? 0);
+        return a + importeLinea(l);
       }, 0),
     [lines],
   );
 
   const setLine = (i: number, patch: Partial<CostLine>) =>
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+
+  /** Solo los artículos del catálogo marcados como caja (refrescos y
+   *  zumos) pueden contarse por cajas de 24. */
+  const esArticuloDeCaja = (nombre: string) =>
+    catalog?.some(
+      (d) => d.unit === 'caja' && d.name.toLowerCase() === nombre.trim().toLowerCase(),
+    ) ?? false;
+
+  /** Coste siempre se guarda por UNIDAD; la caja solo cambia el conteo (×24). */
+  const importeLinea = (l: CostLine) =>
+    l.cantidad * (l.coste ?? 0) * (l.esCaja ? 24 : 1);
 
   const onPickName = (i: number, nombre: string) => {
     const patch: Partial<CostLine> = { nombre };
@@ -88,6 +99,8 @@ export function EscandalloView() {
       if (hit) {
         patch.coste = hit.unitCost;
         patch.esCaja = hit.unit === 'caja';
+      } else {
+        patch.esCaja = false;
       }
     }
     setLine(i, patch);
@@ -150,7 +163,7 @@ export function EscandalloView() {
           nombre: l.esCaja ? `${l.nombre} (caja ×24)` : l.nombre,
           cantidad: l.cantidad,
           coste: l.coste,
-          total: l.cantidad * (l.coste ?? 0),
+          total: importeLinea(l),
         }));
       await sendTelegram(
         settings,
@@ -293,7 +306,7 @@ export function EscandalloView() {
                 <span className="font-data text-xs text-muted-foreground">
                   {l.esCaja ? 'cajas ×24' : 'unidades'}
                 </span>
-                {seccion === 'bebida' && (
+                {seccion === 'bebida' && esArticuloDeCaja(l.nombre) && (
                   <label className="ml-auto inline-flex items-center gap-2 font-data text-xs uppercase tracking-wide text-muted-foreground cursor-pointer">
                     <input
                       type="checkbox"
@@ -323,11 +336,14 @@ export function EscandalloView() {
                   }
                   className="w-28 h-10 px-2 bg-background border border-input font-data text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <span className="font-data text-xs text-muted-foreground">
-                  € / {l.esCaja ? 'caja' : 'ud'}
-                </span>
+                <span className="font-data text-xs text-muted-foreground">€ / ud</span>
+                {l.esCaja && l.coste != null && (
+                  <span className="font-data text-xs text-muted-foreground">
+                    (= {eur(l.coste * 24)} /caja)
+                  </span>
+                )}
                 <span className="ml-auto font-data text-sm">
-                  {l.cantidad > 0 && l.coste != null ? eur(l.cantidad * l.coste) : ''}
+                  {l.cantidad > 0 && l.coste != null ? eur(importeLinea(l)) : ''}
                 </span>
               </div>
             </li>
@@ -339,7 +355,7 @@ export function EscandalloView() {
             onClick={() =>
               setLines((ls) => [
                 ...ls,
-                { nombre: '', cantidad: 0, coste: null, esCaja: seccion === 'bebida' },
+                { nombre: '', cantidad: 0, coste: null, esCaja: false },
               ])
             }
             className="h-12 border border-dashed border-border font-data text-xs uppercase tracking-wide hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-2 cursor-pointer"
