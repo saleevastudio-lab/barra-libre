@@ -10,9 +10,9 @@ export interface CatalogDrink {
   unit: 'ud' | 'caja';
 }
 
-// Catálogo de bebidas (hoja "Catálogo" de la plantilla). Los refrescos se
-// trabajan por caja (×24) en la app para ir más rápido; al escribir el
-// Excel se convierte a unidades.
+// Catálogo de bebidas (hoja "Catálogo" de la plantilla). Solo los refrescos
+// y zumos se trabajan por caja (×24) en la app para ir más rápido; al
+// escribir el Excel se convierte a unidades.
 const RAW: [string, number, 'ud' | 'caja'][] = [
   ['Sambuca', 9.78, 'ud'],
   ['Patxaran Baines', 13.45, 'ud'],
@@ -32,12 +32,12 @@ const RAW: [string, number, 'ud' | 'caja'][] = [
   ['Refresco Sprite', 0.55, 'caja'],
   ['Refresco Tonica Fever Tree Indian', 0.75, 'caja'],
   ['Refresco Soda Fever Tree', 0.81, 'caja'],
-  ['Aquarius Naranja', 0.705, 'caja'],
-  ['Aquarius Limon', 0.705, 'caja'],
-  ['Nesta', 0.8, 'caja'],
+  ['Aquarius Naranja', 0.705, 'ud'],
+  ['Aquarius Limon', 0.705, 'ud'],
+  ['Nesta', 0.8, 'ud'],
   ['Zumo Maid', 0.58, 'caja'],
   ['Barril', 49.87, 'ud'],
-  ['Cerveza 0,0', 0.84375, 'caja'],
+  ['Cerveza 0,0', 0.84375, 'ud'],
   ['Flo Blanco', 3, 'ud'],
   ['Melior tinto', 4.95, 'ud'],
   ['Roger de Flor', 2.14, 'ud'],
