@@ -1,6 +1,6 @@
 /* Service worker mínimo: network-first para documentos,
    cache-first para el resto de assets estáticos. */
-const CACHE = 'consumiciones-v5';
+const CACHE = 'consumiciones-v6';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
