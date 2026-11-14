@@ -67,6 +67,17 @@ export function EscandalloView() {
   const sugeridos = seccion === 'comida' ? PLATOS : DRINKS.map((d) => d.name);
   const listId = `cat-${seccion}`;
 
+  /** Solo los artículos del catálogo marcados como caja (refrescos y
+   *  zumos) pueden contarse por cajas de 24. */
+  const esArticuloDeCaja = (nombre: string) =>
+    catalog?.some(
+      (d) => d.unit === 'caja' && d.name.toLowerCase() === nombre.trim().toLowerCase(),
+    ) ?? false;
+
+  /** Coste siempre se guarda por UNIDAD; la caja solo cambia el conteo (×24). */
+  const importeLinea = (l: CostLine) =>
+    l.cantidad * (l.coste ?? 0) * (l.esCaja ? 24 : 1);
+
   const total = useMemo(
     () =>
       lines.reduce((a, l) => {
@@ -78,17 +89,6 @@ export function EscandalloView() {
 
   const setLine = (i: number, patch: Partial<CostLine>) =>
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-
-  /** Solo los artículos del catálogo marcados como caja (refrescos y
-   *  zumos) pueden contarse por cajas de 24. */
-  const esArticuloDeCaja = (nombre: string) =>
-    catalog?.some(
-      (d) => d.unit === 'caja' && d.name.toLowerCase() === nombre.trim().toLowerCase(),
-    ) ?? false;
-
-  /** Coste siempre se guarda por UNIDAD; la caja solo cambia el conteo (×24). */
-  const importeLinea = (l: CostLine) =>
-    l.cantidad * (l.coste ?? 0) * (l.esCaja ? 24 : 1);
 
   const onPickName = (i: number, nombre: string) => {
     const patch: Partial<CostLine> = { nombre };
