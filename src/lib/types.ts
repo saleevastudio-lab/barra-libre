@@ -18,9 +18,10 @@ export interface IncomeLine {
 export interface CostLine {
   nombre: string;
   cantidad: number;
-  /** Coste por la unidad de trabajo (caja si esCaja, unidad si no). */
+  /** Coste siempre por UNIDAD (como en el catálogo). */
   coste: number | null;
-  /** true = la cantidad y el coste van por caja (×24); el Excel recibe unidades. */
+  /** true = la cantidad se cuenta por cajas de 24 (solo refrescos/zumos);
+   *  el importe total y el Excel multiplican la cantidad por 24. */
   esCaja?: boolean;
 }
 
