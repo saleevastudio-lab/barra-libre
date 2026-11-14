@@ -249,8 +249,9 @@ function fillEvento(ws: Worksheet, ev: EventoDraft): void {
  * Escribe un escandallo en las filas del bloque. La columna D se rellena
  * sola desde el Catálogo cuando el nombre existe; la E ("coste manual") solo
  * se usa cuando el artículo no está en el catálogo o hay coste propio.
- * Las líneas en caja (×24) se convierten a unidades: cantidad × 24 y, si
- * hay coste manual, coste ÷ 24 (los artículos de catálogo ya son por unidad).
+ * El coste siempre se guarda por UNIDAD (la app lo toma así del catálogo);
+ * las líneas en caja (×24) solo cambian el conteo: cantidad × 24 unidades
+ * con el mismo coste unitario.
  */
 function fillEscandallo(
   ws: Worksheet,
@@ -270,11 +271,7 @@ function fillEscandallo(
     ws.getCell(`B${r}`).value = l.nombre || null;
     ws.getCell(`C${r}`).value = esCaja ? l.cantidad * 24 : l.cantidad || null;
     ws.getCell(`E${r}`).value =
-      l.coste !== null && l.coste !== undefined
-        ? esCaja
-          ? Math.round((l.coste / 24) * 10000) / 10000
-          : l.coste
-        : null;
+      l.coste !== null && l.coste !== undefined ? l.coste : null;
   }
 }
 
