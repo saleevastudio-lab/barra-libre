@@ -1,7 +1,7 @@
 // Cálculo en cliente del resultado de un evento (vista previa del semáforo).
 // Replica la lógica de la hoja Evento de la plantilla; el Excel es la fuente
 // final (recalcula al abrirse).
-import type { EventoDraft } from './types';
+import type { CostLine, EventoDraft } from './types';
 import { RATE_EXTRA, RATE_INTERNO, TIPOS_SERVICIO, VARIOS_CONCEPTOS } from './catalog';
 
 export interface EventoPreview {
@@ -40,14 +40,11 @@ export function previewEvento(e: EventoDraft): EventoPreview {
     else if (l.categoria === 'Bebida') netaBebida += lineaNeta;
   }
 
-  const costeComida = e.comida.reduce(
-    (a, l) => a + l.cantidad * (l.coste ?? 0),
-    0,
-  );
-  const costeBebida = e.bebida.reduce(
-    (a, l) => a + l.cantidad * (l.coste ?? 0),
-    0,
-  );
+  // El coste se guarda por unidad; las líneas en caja multiplican por 24.
+  const costeLinea = (l: CostLine) =>
+    l.cantidad * (l.coste ?? 0) * (l.esCaja ? 24 : 1);
+  const costeComida = e.comida.reduce((a, l) => a + costeLinea(l), 0);
+  const costeBebida = e.bebida.reduce((a, l) => a + costeLinea(l), 0);
   const p = e.personal;
   const costePersonal =
     (p.extraSala + p.extraCocina) * RATE_EXTRA +
