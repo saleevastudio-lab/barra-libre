@@ -21,6 +21,23 @@ const BUCKET = 'excels';
 // columnas existen, estas tienen prioridad y el respaldo se ignora.
 
 const FECHAS_KEY = (id: string) => `grupo_fechas:${id}`;
+/** Nombre del archivo Excel vigente de cada grupo (para borrar el anterior). */
+const EXCEL_KEY = (id: string) => `grupo_excel:${id}`;
+
+async function trackedExcelName(id: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from('config')
+    .select('value')
+    .eq('key', EXCEL_KEY(id))
+    .maybeSingle();
+  return (data?.value as string | undefined) ?? null;
+}
+
+async function trackExcelName(id: string, name: string): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('config').upsert({ key: EXCEL_KEY(id), value: name });
+}
 
 async function saveFechasFallback(
   id: string,
@@ -215,23 +232,24 @@ export async function deleteEvento(id: string): Promise<void> {
 
 /**
  * Elimina un grupo completo: sus eventos (por cascada en la base de datos)
- * y, si se puede, el Excel que se hubiera subido a la nube (manager).
+ * y el Excel que se hubiera subido a la nube (manager).
  */
 export async function deleteGrupo(id: string, nombre: string): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
   const { error } = await supabase.from('grupos').delete().eq('id', id);
   if (error) throw new Error(error.message);
+  let prevExcel: string | null = null;
   try {
+    prevExcel = await trackedExcelName(id);
     await supabase.from('config').delete().eq('key', FECHAS_KEY(id));
+    await supabase.from('config').delete().eq('key', EXCEL_KEY(id));
   } catch {
-    /* respaldo de fechas ya ausente: se ignora */
+    /* respaldos ya ausentes: se ignoran */
   }
   try {
-    // Puede no tener permisos para borrar del bucket: en ese caso el
-    // archivo queda en Storage y se puede borrar desde el panel de Supabase.
-    await supabase.storage.from(BUCKET).remove([`${slug(nombre)}.xlsx`]);
+    await supabase.storage.from(BUCKET).remove([prevExcel ?? `${slug(nombre)}.xlsx`]);
   } catch {
-    /* sin permisos de borrado en Storage: se ignora */
+    /* archivo ya ausente: se ignora */
   }
 }
 
@@ -323,8 +341,13 @@ function slug(nombre: string): string {
   );
 }
 
-/** Sube el Excel del grupo y devuelve su URL pública (sobrescribe el anterior). */
+/**
+ * Sube el Excel del grupo y devuelve su URL pública. Si el grupo ya tenía
+ * un Excel con otro nombre (p. ej. tras renombrar el grupo), el anterior
+ * se elimina del bucket: cada grupo tiene siempre un único archivo.
+ */
 export async function uploadExcel(
+  grupoId: string,
   grupoNombre: string,
   blob: Blob,
 ): Promise<string> {
@@ -335,6 +358,15 @@ export async function uploadExcel(
     upsert: true,
   });
   if (error) throw new Error(error.message);
+  try {
+    const prev = await trackedExcelName(grupoId);
+    if (prev && prev !== path) {
+      await supabase.storage.from(BUCKET).remove([prev]);
+    }
+    await trackExcelName(grupoId, path);
+  } catch {
+    /* el seguimiento es opcional: no afecta a la subida */
+  }
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl;
 }
