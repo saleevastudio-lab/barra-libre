@@ -122,6 +122,23 @@ export async function deleteEvento(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Elimina un grupo completo: sus eventos (por cascada en la base de datos)
+ * y, si se puede, el Excel que se hubiera subido a la nube (manager).
+ */
+export async function deleteGrupo(id: string, nombre: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase no configurado');
+  const { error } = await supabase.from('grupos').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  try {
+    // Puede no tener permisos para borrar del bucket: en ese caso el
+    // archivo queda en Storage y se puede borrar desde el panel de Supabase.
+    await supabase.storage.from(BUCKET).remove([`${slug(nombre)}.xlsx`]);
+  } catch {
+    /* sin permisos de borrado en Storage: se ignora */
+  }
+}
+
 /** Guarda las secciones editables de un evento (una llamada por sección). */
 export async function updateEvento(
   id: string,
