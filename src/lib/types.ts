@@ -61,8 +61,11 @@ export interface EventoDraft {
 export interface Grupo {
   id: string;
   nombre: string;
+  /** Opcional: no hace falta rellenarlo. */
   os: string;
-  responsable: string;
+  /** Rango de fechas del grupo (DESDE/HASTA del Resumen): YYYY-MM-DD. */
+  fechaDesde: string;
+  fechaHasta: string;
   fechaAnalisis: string; // YYYY-MM-DD o ''
   observaciones: string;
   createdAt?: string;
