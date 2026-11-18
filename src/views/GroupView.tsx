@@ -71,9 +71,12 @@ export function GroupView() {
   const [pinOpen, setPinOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** URL pública del último Excel generado (para abrirlo en Excel web). */
+  const [excelUrl, setExcelUrl] = useState<string | null>(null);
 
   // Datos editables del grupo (solo manager)
-  const [responsable, setResponsable] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [fechaAnalisis, setFechaAnalisis] = useState('');
   const [observaciones, setObservaciones] = useState('');
 
@@ -96,7 +99,8 @@ export function GroupView() {
 
   useEffect(() => {
     if (grupo) {
-      setResponsable(grupo.responsable);
+      setFechaDesde(grupo.fechaDesde);
+      setFechaHasta(grupo.fechaHasta);
       setFechaAnalisis(grupo.fechaAnalisis);
       setObservaciones(grupo.observaciones);
     }
@@ -132,10 +136,14 @@ export function GroupView() {
   };
 
   const saveGrupo = async () => {
+    if (fechaDesde && fechaHasta && fechaHasta < fechaDesde) {
+      setError('La fecha HASTA no puede ser anterior a la fecha DESDE.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await updateGrupo(gid, { responsable, fechaAnalisis, observaciones });
+      await updateGrupo(gid, { fechaDesde, fechaHasta, fechaAnalisis, observaciones });
       setEditOpen(false);
       setNotice('Datos del grupo guardados.');
     } catch (e) {
@@ -150,10 +158,12 @@ export function GroupView() {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setExcelUrl(null);
     try {
       // Avisos de datos relevantes que faltan (no bloquean la generación).
       const avisos: string[] = [];
-      if (!grupo.responsable.trim()) avisos.push('falta el responsable comercial del grupo');
+      if (!grupo.fechaDesde) avisos.push('falta la fecha DESDE del grupo');
+      if (!grupo.fechaHasta) avisos.push('falta la fecha HASTA del grupo');
       if (!grupo.fechaAnalisis) avisos.push('falta la fecha del análisis del grupo');
       for (const ev of eventos) {
         const etiqueta = ev.nombre?.trim() || `Evento ${ev.orden}`;
@@ -172,6 +182,7 @@ export function GroupView() {
       a.click();
       URL.revokeObjectURL(a.href);
       const url = await uploadExcel(grupo.nombre || 'GRUPO', blob);
+      setExcelUrl(url);
       setNotice(
         (avisos.length > 0 ? `Aviso: ${avisos.join(' · ')}. — ` : '') +
           `Excel guardado en la nube: ${url}`,
@@ -183,11 +194,26 @@ export function GroupView() {
     }
   };
 
+  const excelWebUrl = excelUrl
+    ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(excelUrl)}`
+    : null;
+
+  const grupoDetalle = grupo
+    ? [
+        grupo.os ? `OS ${grupo.os}` : null,
+        grupo.fechaDesde && grupo.fechaHasta
+          ? `${grupo.fechaDesde} → ${grupo.fechaHasta}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+
   return (
     <div className="min-h-dvh">
       <ViewHeader
         title={grupo?.nombre ?? 'Grupo'}
-        subtitle={grupo?.os ? `OS ${grupo.os}` : undefined}
+        subtitle={grupoDetalle || undefined}
         right={
           <>
             {!isManager && (
@@ -236,19 +262,44 @@ export function GroupView() {
         )}
         {error && <Notice msg={error} />}
         {notice && <Notice msg={notice} />}
+        {excelWebUrl && (
+          <a
+            href={excelWebUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="h-12 border border-primary bg-primary/10 text-primary font-data text-xs uppercase tracking-wide font-bold inline-flex items-center justify-center gap-2 hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Abrir el último Excel en Excel web
+          </a>
+        )}
 
         {isManager && editOpen && (
           <section className="border border-border p-4 flex flex-col gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
-                Responsable comercial
-              </span>
-              <input
-                value={responsable}
-                onChange={(e) => setResponsable(e.target.value)}
-                className={inputCls}
-              />
-            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+                  Fecha desde
+                </span>
+                <input
+                  type="date"
+                  value={fechaDesde}
+                  onChange={(e) => setFechaDesde(e.target.value)}
+                  className={inputCls}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+                  Fecha hasta
+                </span>
+                <input
+                  type="date"
+                  value={fechaHasta}
+                  onChange={(e) => setFechaHasta(e.target.value)}
+                  className={inputCls}
+                />
+              </label>
+            </div>
             <label className="flex flex-col gap-1">
               <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
                 Fecha del análisis
