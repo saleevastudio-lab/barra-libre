@@ -14,6 +14,62 @@ export const supabase: SupabaseClient | null = supabaseConfigured
 
 const BUCKET = 'excels';
 
+// ---------- Respaldo de fechas DESDE/HASTA en `config` ----------
+// La tabla `grupos` puede no tener aún las columnas fecha_desde/fecha_hasta.
+// Mientras tanto, las fechas se guardan en la tabla config (clave/valor) bajo
+// `grupo_fechas:<id>`, y al leer se fusionan con la fila del grupo. Si las
+// columnas existen, estas tienen prioridad y el respaldo se ignora.
+
+const FECHAS_KEY = (id: string) => `grupo_fechas:${id}`;
+
+async function saveFechasFallback(
+  id: string,
+  desde: string,
+  hasta: string,
+): Promise<void> {
+  if (!supabase) return;
+  await supabase
+    .from('config')
+    .upsert({ key: FECHAS_KEY(id), value: JSON.stringify({ desde, hasta }) });
+}
+
+async function loadFechasFallbackMap(
+  ids: string[],
+): Promise<Record<string, { desde: string; hasta: string }>> {
+  const map: Record<string, { desde: string; hasta: string }> = {};
+  if (!supabase || ids.length === 0) return map;
+  const { data } = await supabase
+    .from('config')
+    .select('key,value')
+    .like('key', 'grupo_fechas:%');
+  for (const row of data ?? []) {
+    const id = ((row.key as string) ?? '').replace('grupo_fechas:', '');
+    if (!ids.includes(id)) continue;
+    try {
+      const v = JSON.parse((row.value as string) ?? '{}') as {
+        desde?: string;
+        hasta?: string;
+      };
+      map[id] = { desde: v.desde ?? '', hasta: v.hasta ?? '' };
+    } catch {
+      /* valor inválido: se ignora */
+    }
+  }
+  return map;
+}
+
+function withFechasFallback(
+  g: Grupo,
+  fb?: { desde: string; hasta: string },
+): Grupo {
+  if (!fb) return g;
+  return {
+    ...g,
+    fechaDesde: g.fechaDesde || fb.desde,
+    fechaHasta: g.fechaHasta || fb.hasta,
+  };
+}
+
 // ---------- Grupos ----------
 
 export async function listGrupos(): Promise<Grupo[]> {
@@ -23,7 +79,9 @@ export async function listGrupos(): Promise<Grupo[]> {
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToGrupo);
+  const grupos = (data ?? []).map(rowToGrupo);
+  const fb = await loadFechasFallbackMap(grupos.map((g) => g.id));
+  return grupos.map((g) => withFechasFallback(g, fb[g.id]));
 }
 
 export async function getGrupo(id: string): Promise<Grupo | null> {
@@ -34,7 +92,24 @@ export async function getGrupo(id: string): Promise<Grupo | null> {
     .eq('id', id)
     .single();
   if (error) return null;
-  return rowToGrupo(data);
+  const g = rowToGrupo(data);
+  const { data: cfg } = await supabase
+    .from('config')
+    .select('value')
+    .eq('key', FECHAS_KEY(id))
+    .maybeSingle();
+  if (cfg?.value) {
+    try {
+      const v = JSON.parse(cfg.value as string) as {
+        desde?: string;
+        hasta?: string;
+      };
+      return withFechasFallback(g, { desde: v.desde ?? '', hasta: v.hasta ?? '' });
+    } catch {
+      /* valor inválido: se ignora */
+    }
+  }
+  return g;
 }
 
 export async function createGrupo(
@@ -56,6 +131,14 @@ export async function createGrupo(
       .insert({ nombre: g.nombre, os: g.os })
       .select()
       .single();
+    // Sin columnas de fechas: se guardan en el respaldo de config.
+    if (!res.error && (g.fechaDesde || g.fechaHasta)) {
+      await saveFechasFallback(
+        res.data.id as string,
+        g.fechaDesde || '',
+        g.fechaHasta || '',
+      );
+    }
   }
   if (res.error) throw new Error(res.error.message);
   return rowToGrupo(res.data);
@@ -76,8 +159,16 @@ export async function updateGrupo(
   };
   let res = await supabase.from('grupos').update(row).eq('id', id);
   if (res.error && /fecha_(desde|hasta)/.test(res.error.message)) {
+    // Sin columnas de fechas: se actualizan los demás campos y las fechas
+    // van al respaldo de config (así "Guardar" persiste DESDE/HASTA).
     const { fecha_desde: _fd, fecha_hasta: _fh, ...rest } = row;
     res = await supabase.from('grupos').update(rest).eq('id', id);
+    if (!res.error && (patch.fechaDesde || patch.fechaHasta)) {
+      await saveFechasFallback(id, patch.fechaDesde ?? '', patch.fechaHasta ?? '');
+    }
+  } else if (!res.error) {
+    // Columnas existentes: cualquier respaldo antiguo sobra.
+    supabase.from('config').delete().eq('key', FECHAS_KEY(id)).then(() => {});
   }
   if (res.error) throw new Error(res.error.message);
 }
@@ -130,6 +221,11 @@ export async function deleteGrupo(id: string, nombre: string): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
   const { error } = await supabase.from('grupos').delete().eq('id', id);
   if (error) throw new Error(error.message);
+  try {
+    await supabase.from('config').delete().eq('key', FECHAS_KEY(id));
+  } catch {
+    /* respaldo de fechas ya ausente: se ignora */
+  }
   try {
     // Puede no tener permisos para borrar del bucket: en ese caso el
     // archivo queda en Storage y se puede borrar desde el panel de Supabase.
