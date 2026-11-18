@@ -101,6 +101,13 @@ export async function createEvento(
   return rowToEvento(data);
 }
 
+/** Elimina un evento del grupo (manager). */
+export async function deleteEvento(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase no configurado');
+  const { error } = await supabase.from('eventos').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 /** Guarda las secciones editables de un evento (una llamada por sección). */
 export async function updateEvento(
   id: string,
