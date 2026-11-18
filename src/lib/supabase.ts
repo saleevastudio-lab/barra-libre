@@ -13,38 +13,55 @@ export const supabase: SupabaseClient | null = supabaseConfigured
   : null;
 
 const BUCKET = 'excels';
+const XLSX_MIME =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-// ---------- Respaldo de fechas DESDE/HASTA en `config` ----------
+// ---------- Respaldo de fechas DESDE/HASTA y seguimiento del Excel ----------
 // La tabla `grupos` puede no tener aún las columnas fecha_desde/fecha_hasta.
 // Mientras tanto, las fechas se guardan en la tabla config (clave/valor) bajo
 // `grupo_fechas:<id>`, y al leer se fusionan con la fila del grupo. Si las
 // columnas existen, estas tienen prioridad y el respaldo se ignora.
+// El nombre del Excel vigente se guarda bajo `grupo_excel:<id>`.
 
 const FECHAS_KEY = (id: string) => `grupo_fechas:${id}`;
-/** Nombre del archivo Excel vigente de cada grupo (para borrar el anterior). */
 const EXCEL_KEY = (id: string) => `grupo_excel:${id}`;
 
-async function trackedExcelName(id: string): Promise<string | null> {
-  if (!supabase) return null;
-  const { data } = await supabase
-    .from('config')
-    .select('value')
-    .eq('key', EXCEL_KEY(id))
-    .maybeSingle();
-  return (data?.value as string | undefined) ?? null;
-}
+// ---------- Acceso a `config` y Storage por REST directo ----------
+// Se usa fetch en lugar de supabase-js porque el cliente podía quedarse
+// bloqueado tras ciertas operaciones y dejar la interfaz —o la apertura de
+// Excel web— esperando para siempre. Aquí cada llamada es una petición HTTP
+// independiente que siempre se dispara.
 
-async function trackExcelName(id: string, name: string): Promise<void> {
-  if (!supabase) return;
-  await supabase.from('config').upsert({ key: EXCEL_KEY(id), value: name });
-}
-
-// Llamadas REST directas para la limpieza. Se usan en lugar de supabase-js
-// porque, tras un borrado, la cola del cliente podía quedarse bloqueada y la
-// limpieza nunca llegaba a ejecutarse. Así cada borrado es una petición fetch
-// independiente y siempre se dispara.
 function restHeaders(): Record<string, string> {
   return { apikey: anonKey as string, Authorization: `Bearer ${anonKey as string}` };
+}
+
+async function restGet(path: string): Promise<unknown> {
+  const res = await fetch(`${url}${path}`, { headers: restHeaders() });
+  if (!res.ok) throw new Error(`GET ${path}: HTTP ${res.status}`);
+  return res.json();
+}
+
+async function readConfigValue(key: string): Promise<string | null> {
+  const rows = (await restGet(
+    `/rest/v1/config?select=value&key=eq.${encodeURIComponent(key)}`,
+  )) as Array<{ value?: string }>;
+  return rows[0]?.value ?? null;
+}
+
+async function writeConfigValue(key: string, value: string): Promise<void> {
+  const res = await fetch(`${url}/rest/v1/config`, {
+    method: 'POST',
+    headers: {
+      ...restHeaders(),
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,on_conflict=key',
+    },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`config ${key}: HTTP ${res.status}`);
+  }
 }
 
 async function restDeleteConfig(key: string): Promise<void> {
@@ -66,15 +83,24 @@ async function storageRemoveFile(file: string): Promise<void> {
   }
 }
 
+/** Nombre del archivo Excel vigente de un grupo (seguimiento). */
+async function trackedExcelName(id: string): Promise<string | null> {
+  if (!supabase) return null;
+  return readConfigValue(EXCEL_KEY(id)).catch(() => null);
+}
+
+async function trackExcelName(id: string, name: string): Promise<void> {
+  if (!supabase) return;
+  await writeConfigValue(EXCEL_KEY(id), name);
+}
+
 async function saveFechasFallback(
   id: string,
   desde: string,
   hasta: string,
 ): Promise<void> {
   if (!supabase) return;
-  await supabase
-    .from('config')
-    .upsert({ key: FECHAS_KEY(id), value: JSON.stringify({ desde, hasta }) });
+  await writeConfigValue(FECHAS_KEY(id), JSON.stringify({ desde, hasta }));
 }
 
 async function loadFechasFallbackMap(
@@ -82,11 +108,15 @@ async function loadFechasFallbackMap(
 ): Promise<Record<string, { desde: string; hasta: string }>> {
   const map: Record<string, { desde: string; hasta: string }> = {};
   if (!supabase || ids.length === 0) return map;
-  const { data } = await supabase
-    .from('config')
-    .select('key,value')
-    .like('key', 'grupo_fechas:%');
-  for (const row of data ?? []) {
+  let rows: Array<{ key?: string; value?: string }> = [];
+  try {
+    rows = (await restGet(
+      `/rest/v1/config?select=key,value&key=like.${encodeURIComponent('grupo_fechas:%')}`,
+    )) as Array<{ key?: string; value?: string }>;
+  } catch {
+    return map;
+  }
+  for (const row of rows) {
     const id = ((row.key as string) ?? '').replace('grupo_fechas:', '');
     if (!ids.includes(id)) continue;
     try {
@@ -137,17 +167,10 @@ export async function getGrupo(id: string): Promise<Grupo | null> {
     .single();
   if (error) return null;
   const g = rowToGrupo(data);
-  const { data: cfg } = await supabase
-    .from('config')
-    .select('value')
-    .eq('key', FECHAS_KEY(id))
-    .maybeSingle();
-  if (cfg?.value) {
+  const cfg = await readConfigValue(FECHAS_KEY(id)).catch(() => null);
+  if (cfg) {
     try {
-      const v = JSON.parse(cfg.value as string) as {
-        desde?: string;
-        hasta?: string;
-      };
+      const v = JSON.parse(cfg) as { desde?: string; hasta?: string };
       return withFechasFallback(g, { desde: v.desde ?? '', hasta: v.hasta ?? '' });
     } catch {
       /* valor inválido: se ignora */
@@ -212,7 +235,7 @@ export async function updateGrupo(
     }
   } else if (!res.error) {
     // Columnas existentes: cualquier respaldo antiguo sobra.
-    supabase.from('config').delete().eq('key', FECHAS_KEY(id)).then(() => {});
+    restDeleteConfig(FECHAS_KEY(id)).catch(() => {});
   }
   if (res.error) throw new Error(res.error.message);
 }
@@ -267,12 +290,7 @@ export async function deleteGrupo(id: string, nombre: string): Promise<void> {
   if (error) throw new Error(error.message);
   // Limpieza de respaldos y del Excel: cada paso es independiente y tolera
   // fallos, para que un fallo no impida el resto de borrados.
-  let prevExcel: string | null = null;
-  try {
-    prevExcel = await trackedExcelName(id);
-  } catch {
-    prevExcel = null;
-  }
+  const prevExcel = await trackedExcelName(id);
   await Promise.allSettled([
     restDeleteConfig(FECHAS_KEY(id)),
     restDeleteConfig(EXCEL_KEY(id)),
@@ -369,9 +387,9 @@ function slug(nombre: string): string {
 }
 
 /**
- * Sube el Excel del grupo y devuelve su URL pública. El seguimiento del
- * archivo (para borrar el anterior al renombrar) se hace en segundo plano:
- * nunca retrasa la respuesta ni la apertura de Excel web.
+ * Sube el Excel del grupo y devuelve su URL pública. La subida es una
+ * petición directa (el seguimiento del archivo va en segundo plano y nunca
+ * retrasa la respuesta ni la apertura de Excel web).
  */
 export async function uploadExcel(
   grupoId: string,
@@ -380,14 +398,19 @@ export async function uploadExcel(
 ): Promise<string> {
   if (!supabase) throw new Error('Supabase no configurado');
   const path = `${slug(grupoNombre)}.xlsx`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
-    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    upsert: true,
-  });
-  if (error) throw new Error(error.message);
-  // Seguimiento del archivo en segundo plano: NUNCA retrasa la respuesta
-  // (ni la apertura de Excel web). Si el cliente se queda bloqueado, no
-  // pasa nada: el archivo ya está subido.
+  const res = await fetch(
+    `${url}/storage/v1/object/${BUCKET}/${encodeURIComponent(path)}?upsert=true`,
+    {
+      method: 'POST',
+      headers: { ...restHeaders(), 'Content-Type': XLSX_MIME, 'x-upsert': 'true' },
+      body: blob,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`No se pudo subir el Excel a la nube (HTTP ${res.status})`);
+  }
+  // Seguimiento del archivo en segundo plano: si falla o tarda, no importa;
+  // el archivo ya está subido.
   void (async () => {
     try {
       const prev = await trackedExcelName(grupoId);
@@ -399,17 +422,15 @@ export async function uploadExcel(
       /* el seguimiento es opcional: no afecta a la subida */
     }
   })();
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return `${url}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(path)}`;
 }
 
 /** URL pública del Excel vigente del grupo (para el botón de Excel web). */
 export async function getExcelPublicUrl(grupoId: string): Promise<string | null> {
   if (!supabase) return null;
-  const name = await trackedExcelName(grupoId).catch(() => null);
+  const name = await trackedExcelName(grupoId);
   if (!name) return null;
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(name);
-  return data.publicUrl;
+  return `${url}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(name)}`;
 }
 
 // ---------- PIN manager ----------
@@ -426,21 +447,13 @@ async function sha256(text: string): Promise<string> {
 
 export async function getPinHash(): Promise<string | null> {
   if (!supabase) return null;
-  const { data } = await supabase
-    .from('config')
-    .select('value')
-    .eq('key', 'pin_hash')
-    .maybeSingle();
-  return (data?.value as string | undefined) ?? null;
+  return readConfigValue('pin_hash');
 }
 
 export async function setPin(pin: string): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
   const hash = await sha256(pin);
-  const { error } = await supabase
-    .from('config')
-    .upsert({ key: 'pin_hash', value: hash });
-  if (error) throw new Error(error.message);
+  await writeConfigValue('pin_hash', hash);
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
