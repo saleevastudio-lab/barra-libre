@@ -39,6 +39,33 @@ async function trackExcelName(id: string, name: string): Promise<void> {
   await supabase.from('config').upsert({ key: EXCEL_KEY(id), value: name });
 }
 
+// Llamadas REST directas para la limpieza. Se usan en lugar de supabase-js
+// porque, tras un borrado, la cola del cliente podía quedarse bloqueada y la
+// limpieza nunca llegaba a ejecutarse. Así cada borrado es una petición fetch
+// independiente y siempre se dispara.
+function restHeaders(): Record<string, string> {
+  return { apikey: anonKey as string, Authorization: `Bearer ${anonKey as string}` };
+}
+
+async function restDeleteConfig(key: string): Promise<void> {
+  const res = await fetch(`${url}/rest/v1/config?key=eq.${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+    headers: restHeaders(),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`config ${key}: HTTP ${res.status}`);
+}
+
+async function storageRemoveFile(file: string): Promise<void> {
+  const res = await fetch(`${url}/storage/v1/object/${BUCKET}/${encodeURIComponent(file)}`, {
+    method: 'DELETE',
+    headers: restHeaders(),
+  });
+  // Storage responde 400 con "resource not found" si el archivo ya no existe.
+  if (!res.ok && res.status !== 404 && res.status !== 400) {
+    throw new Error(`storage ${file}: HTTP ${res.status}`);
+  }
+}
+
 async function saveFechasFallback(
   id: string,
   desde: string,
@@ -238,19 +265,19 @@ export async function deleteGrupo(id: string, nombre: string): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
   const { error } = await supabase.from('grupos').delete().eq('id', id);
   if (error) throw new Error(error.message);
+  // Limpieza de respaldos y del Excel: cada paso es independiente y tolera
+  // fallos, para que un fallo no impida el resto de borrados.
   let prevExcel: string | null = null;
   try {
     prevExcel = await trackedExcelName(id);
-    await supabase.from('config').delete().eq('key', FECHAS_KEY(id));
-    await supabase.from('config').delete().eq('key', EXCEL_KEY(id));
   } catch {
-    /* respaldos ya ausentes: se ignoran */
+    prevExcel = null;
   }
-  try {
-    await supabase.storage.from(BUCKET).remove([prevExcel ?? `${slug(nombre)}.xlsx`]);
-  } catch {
-    /* archivo ya ausente: se ignora */
-  }
+  await Promise.allSettled([
+    restDeleteConfig(FECHAS_KEY(id)),
+    restDeleteConfig(EXCEL_KEY(id)),
+    storageRemoveFile(prevExcel ?? `${slug(nombre)}.xlsx`),
+  ]);
 }
 
 /** Guarda las secciones editables de un evento (una llamada por sección). */
@@ -361,7 +388,7 @@ export async function uploadExcel(
   try {
     const prev = await trackedExcelName(grupoId);
     if (prev && prev !== path) {
-      await supabase.storage.from(BUCKET).remove([prev]);
+      await storageRemoveFile(prev);
     }
     await trackExcelName(grupoId, path);
   } catch {
