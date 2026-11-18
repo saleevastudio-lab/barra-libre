@@ -69,8 +69,19 @@ export async function generateExcel(
   if (!rs) throw new Error('Plantilla inválida: falta la hoja Resumen');
   rs.getCell('B6').value = grupo.nombre || null;
   rs.getCell('D6').value = grupo.os || null;
-  rs.getCell('I6').value = grupo.responsable || null;
+  // DESDE/HASTA: la plantilla trae fórmulas MIN/MAX sobre las fechas de los
+  // eventos; cuando el manager fijó fechas en el grupo se escriben como
+  // valores literales (como en el Excel de trabajo) con formato dd/mm/aaaa.
+  if (grupo.fechaDesde) {
+    rs.getCell('E6').value = toDate(grupo.fechaDesde);
+    rs.getCell('E6').numFmt = 'dd/mm/yyyy';
+  }
+  if (grupo.fechaHasta) {
+    rs.getCell('G6').value = toDate(grupo.fechaHasta);
+    rs.getCell('G6').numFmt = 'dd/mm/yyyy';
+  }
   rs.getCell('L6').value = grupo.fechaAnalisis ? toDate(grupo.fechaAnalisis) : null;
+  rs.getCell('L6').numFmt = 'dd/mm/yyyy';
   rs.getCell('B35').value = grupo.observaciones || null;
 
   // ---------- Eventos ----------
@@ -203,7 +214,10 @@ function fillEvento(ws: Worksheet, ev: EventoDraft): void {
   const tipoFull = TIPOS_SERVICIO.find((t) => t.short === ev.tipo)?.full;
   ws.getCell('B6').value = ev.nombre || null;
   ws.getCell('C6').value = tipoFull ?? (ev.tipo || null);
+  // La fecha debe verse siempre en formato español dd/mm/aaaa (la plantilla
+  // trae mm-dd-yy, que confunde: 11-03-26 se lee como 3 de noviembre).
   ws.getCell('G6').value = ev.fecha ? toDate(ev.fecha) : null;
+  ws.getCell('G6').numFmt = 'dd/mm/yyyy';
   ws.getCell('H6').value = ev.duracion || null;
   ws.getCell('I6').value = ev.mesas || null;
 
