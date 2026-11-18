@@ -38,16 +38,27 @@ export async function getGrupo(id: string): Promise<Grupo | null> {
 }
 
 export async function createGrupo(
-  g: Pick<Grupo, 'nombre' | 'os'>,
+  g: Pick<Grupo, 'nombre' | 'os' | 'fechaDesde' | 'fechaHasta'>,
 ): Promise<Grupo> {
   if (!supabase) throw new Error('Supabase no configurado');
-  const { data, error } = await supabase
-    .from('grupos')
-    .insert({ nombre: g.nombre, os: g.os })
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return rowToGrupo(data);
+  const row = {
+    nombre: g.nombre,
+    os: g.os,
+    fecha_desde: g.fechaDesde || null,
+    fecha_hasta: g.fechaHasta || null,
+  };
+  let res = await supabase.from('grupos').insert(row).select().single();
+  // Compatibilidad mientras la tabla no tenga las columnas de fechas:
+  // si fecha_desde/fecha_hasta no existen aún, se reintenta sin ellas.
+  if (res.error && /fecha_(desde|hasta)/.test(res.error.message)) {
+    res = await supabase
+      .from('grupos')
+      .insert({ nombre: g.nombre, os: g.os })
+      .select()
+      .single();
+  }
+  if (res.error) throw new Error(res.error.message);
+  return rowToGrupo(res.data);
 }
 
 export async function updateGrupo(
@@ -55,17 +66,20 @@ export async function updateGrupo(
   patch: Partial<Omit<Grupo, 'id' | 'createdAt'>>,
 ): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
-  const { error } = await supabase
-    .from('grupos')
-    .update({
-      nombre: patch.nombre,
-      os: patch.os,
-      responsable: patch.responsable,
-      fecha_analisis: patch.fechaAnalisis || null,
-      observaciones: patch.observaciones,
-    })
-    .eq('id', id);
-  if (error) throw new Error(error.message);
+  const row: Record<string, unknown> = {
+    nombre: patch.nombre,
+    os: patch.os,
+    fecha_desde: patch.fechaDesde || null,
+    fecha_hasta: patch.fechaHasta || null,
+    fecha_analisis: patch.fechaAnalisis || null,
+    observaciones: patch.observaciones,
+  };
+  let res = await supabase.from('grupos').update(row).eq('id', id);
+  if (res.error && /fecha_(desde|hasta)/.test(res.error.message)) {
+    const { fecha_desde: _fd, fecha_hasta: _fh, ...rest } = row;
+    res = await supabase.from('grupos').update(rest).eq('id', id);
+  }
+  if (res.error) throw new Error(res.error.message);
 }
 
 // ---------- Eventos ----------
@@ -256,7 +270,8 @@ function rowToGrupo(r: Record<string, unknown>): Grupo {
     id: r.id as string,
     nombre: (r.nombre as string) ?? '',
     os: (r.os as string) ?? '',
-    responsable: (r.responsable as string) ?? '',
+    fechaDesde: (r.fecha_desde as string | null) ?? '',
+    fechaHasta: (r.fecha_hasta as string | null) ?? '',
     fechaAnalisis: (r.fecha_analisis as string | null) ?? '',
     observaciones: (r.observaciones as string) ?? '',
     createdAt: (r.created_at as string | undefined) ?? undefined,
