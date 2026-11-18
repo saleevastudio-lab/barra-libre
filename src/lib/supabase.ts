@@ -369,9 +369,9 @@ function slug(nombre: string): string {
 }
 
 /**
- * Sube el Excel del grupo y devuelve su URL pública. Si el grupo ya tenía
- * un Excel con otro nombre (p. ej. tras renombrar el grupo), el anterior
- * se elimina del bucket: cada grupo tiene siempre un único archivo.
+ * Sube el Excel del grupo y devuelve su URL pública. El seguimiento del
+ * archivo (para borrar el anterior al renombrar) se hace en segundo plano:
+ * nunca retrasa la respuesta ni la apertura de Excel web.
  */
 export async function uploadExcel(
   grupoId: string,
@@ -385,16 +385,30 @@ export async function uploadExcel(
     upsert: true,
   });
   if (error) throw new Error(error.message);
-  try {
-    const prev = await trackedExcelName(grupoId);
-    if (prev && prev !== path) {
-      await storageRemoveFile(prev);
+  // Seguimiento del archivo en segundo plano: NUNCA retrasa la respuesta
+  // (ni la apertura de Excel web). Si el cliente se queda bloqueado, no
+  // pasa nada: el archivo ya está subido.
+  void (async () => {
+    try {
+      const prev = await trackedExcelName(grupoId);
+      if (prev && prev !== path) {
+        await storageRemoveFile(prev);
+      }
+      await trackExcelName(grupoId, path);
+    } catch {
+      /* el seguimiento es opcional: no afecta a la subida */
     }
-    await trackExcelName(grupoId, path);
-  } catch {
-    /* el seguimiento es opcional: no afecta a la subida */
-  }
+  })();
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/** URL pública del Excel vigente del grupo (para el botón de Excel web). */
+export async function getExcelPublicUrl(grupoId: string): Promise<string | null> {
+  if (!supabase) return null;
+  const name = await trackedExcelName(grupoId).catch(() => null);
+  if (!name) return null;
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(name);
   return data.publicUrl;
 }
 
