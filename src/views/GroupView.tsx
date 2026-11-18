@@ -18,6 +18,7 @@ import { euroSlices, previewEvento, previewGrupo } from '@/lib/calc';
 import {
   createEvento,
   deleteEvento,
+  getExcelPublicUrl,
   getGrupo,
   listEventos,
   subscribeGrupo,
@@ -90,6 +91,13 @@ export function GroupView() {
         .catch((e) => alive && setError(e instanceof Error ? e.message : 'Error de carga'));
     };
     reload();
+    // Botón verde de Excel web disponible desde el principio con el último
+    // Excel que se hubiera generado (aunque se recargue la página).
+    getExcelPublicUrl(gid)
+      .then((u) => {
+        if (alive && u) setExcelUrl(u);
+      })
+      .catch(() => {});
     const unsub = subscribeGrupo(gid, reload);
     return () => {
       alive = false;
@@ -163,6 +171,21 @@ export function GroupView() {
     // (antes de las esperas de red) para que el navegador no la bloquee
     // como ventana emergente. Si aun así se bloquea, queda el botón verde.
     const excelTab = window.open('', '_blank');
+    if (excelTab) {
+      // Mensaje visible mientras se genera y sube: nunca una pestaña
+      // en blanco confusa.
+      try {
+        excelTab.document.write(
+          '<html><head><title>Abriendo Excel…</title></head><body style="margin:0;' +
+            'height:100vh;display:flex;align-items:center;justify-content:center;' +
+            'font-family:system-ui,sans-serif;background:#0b0b0f;color:#eee">' +
+            '<p>Preparando el Excel…</p></body></html>',
+        );
+        excelTab.document.close();
+      } catch {
+        /* la pestaña no es accesible: se ignora */
+      }
+    }
     try {
       // Avisos de datos relevantes que faltan (no bloquean la generación).
       const avisos: string[] = [];
@@ -191,6 +214,18 @@ export function GroupView() {
       if (excelTab) {
         // Navegar la pestaña abierta en el clic hacia el visor de Excel web.
         excelTab.location.href = webUrl;
+        // Algunos navegadores bloquean la navegación programada: si la pestaña
+        // sigue en blanco, se reintenta. Si ya navegó (origen cruzado), la
+        // lectura de location lanza y el reintento sobra.
+        setTimeout(() => {
+          try {
+            if (excelTab.location.href === 'about:blank') {
+              excelTab.location.href = webUrl;
+            }
+          } catch {
+            /* ya navegó: todo bien */
+          }
+        }, 2500);
       }
       setNotice(
         (avisos.length > 0 ? `Aviso: ${avisos.join(' · ')}. — ` : '') +
