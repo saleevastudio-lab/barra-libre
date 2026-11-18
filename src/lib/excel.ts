@@ -174,8 +174,9 @@ async function injectResumenChart(
     gen.file(drawingRelsPath, drawingRels);
   }
 
-  // 4) La parte del chart, copiada de la plantilla tal cual.
-  gen.file('xl/charts/chart1.xml', await chartPart.async('nodebuffer'));
+  // 4) La parte del chart, copiada de la plantilla tal cual. En el
+  //    navegador JSZip no soporta 'nodebuffer': se usa ArrayBuffer.
+  gen.file('xl/charts/chart1.xml', await chartPart.async('arraybuffer'));
 
   // 5) Content type del chart.
   const ctPath = '[Content_Types].xml';
