@@ -10,8 +10,8 @@ import { SettingsDialog } from '@/sections/SettingsDialog';
 
 /**
  * Pantalla de entrada: lista de grupos (un grupo = un Excel compartido).
- * El manager crea el grupo (Nº OS + nombre) y los supervisores entran a
- * rellenar consumiciones.
+ * El manager crea el grupo (nombre + fechas DESDE/HASTA; Nº OS opcional) y
+ * los supervisores entran a rellenar consumiciones.
  */
 export function GroupListView() {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null);
@@ -19,6 +19,8 @@ export function GroupListView() {
   const [creating, setCreating] = useState(false);
   const [nombre, setNombre] = useState('');
   const [os, setOs] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [busy, setBusy] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [isManager, setIsManager] = useState(() => isManagerSession());
@@ -45,10 +47,19 @@ export function GroupListView() {
 
   const create = async () => {
     if (!nombre.trim()) return;
+    if (fechaDesde && fechaHasta && fechaHasta < fechaDesde) {
+      setError('La fecha HASTA no puede ser anterior a la fecha DESDE.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const g = await createGrupo({ nombre: nombre.trim(), os: os.trim() });
+      const g = await createGrupo({
+        nombre: nombre.trim(),
+        os: os.trim(),
+        fechaDesde,
+        fechaHasta,
+      });
       navigate(`/g/${g.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear el grupo');
@@ -105,7 +116,7 @@ export function GroupListView() {
             onClick={() => setCreating((v) => !v)}
             className="w-full h-12 border border-dashed border-border font-data text-xs uppercase tracking-wide hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Plus className="h-4 w-4" /> Nuevo grupo (Nº OS + nombre)
+            <Plus className="h-4 w-4" /> Nuevo grupo
           </button>
           {creating && (
             <div className="mt-3 border border-border p-4 flex flex-col gap-3">
@@ -121,20 +132,50 @@ export function GroupListView() {
                   autoFocus
                 />
               </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+                    Fecha desde
+                  </span>
+                  <input
+                    type="date"
+                    value={fechaDesde}
+                    onChange={(e) => setFechaDesde(e.target.value)}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
+                    Fecha hasta
+                  </span>
+                  <input
+                    type="date"
+                    value={fechaHasta}
+                    onChange={(e) => setFechaHasta(e.target.value)}
+                    className={inputCls}
+                  />
+                </label>
+              </div>
               <label className="flex flex-col gap-1">
                 <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
-                  Nº OS
+                  Nº OS (opcional)
                 </span>
                 <input
                   value={os}
                   onChange={(e) => setOs(e.target.value)}
-                  placeholder="OS-2026-001"
+                  placeholder="Opcional — OS-2026-001"
                   className={inputCls}
                 />
               </label>
               <button
                 onClick={create}
-                disabled={busy || !nombre.trim() || !supabaseConfigured}
+                disabled={
+                  busy ||
+                  !nombre.trim() ||
+                  !fechaDesde ||
+                  !fechaHasta ||
+                  !supabaseConfigured
+                }
                 className="h-12 bg-primary text-primary-foreground font-data text-xs uppercase tracking-wide font-bold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer disabled:cursor-default"
               >
                 {busy ? 'Creando…' : 'Crear grupo'}
@@ -159,7 +200,16 @@ export function GroupListView() {
             </p>
           ) : (
             <ul className="border border-border divide-y divide-border">
-              {grupos.map((g) => (
+              {grupos.map((g) => {
+                const detalle = [
+                  g.os ? `OS ${g.os}` : null,
+                  g.fechaDesde && g.fechaHasta
+                    ? `${g.fechaDesde} → ${g.fechaHasta}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
                 <li key={g.id}>
                   <Link
                     to={`/g/${g.id}`}
@@ -170,8 +220,7 @@ export function GroupListView() {
                         {g.nombre || '(sin nombre)'}
                       </p>
                       <p className="font-data text-xs text-muted-foreground">
-                        {g.os ? `OS ${g.os}` : 'sin OS'}
-                        {g.fechaAnalisis ? ` · ${g.fechaAnalisis}` : ''}
+                        {detalle || 'sin OS ni fechas'}
                       </p>
                     </div>
                     <span className="font-data text-xs uppercase text-muted-foreground shrink-0">
@@ -179,7 +228,8 @@ export function GroupListView() {
                     </span>
                   </Link>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
