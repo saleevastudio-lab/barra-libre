@@ -62,23 +62,26 @@ export function SettingsDialog({
 
         <div className="p-4 flex flex-col gap-4">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Crea un bot con <b className="text-foreground">@BotFather</b>{' '}
-            (comando <span className="font-data">/newbot</span>) y pega el token
-            aquí. El chat ID es el número del chat del manager (puedes
-            obtenerlo escribiendo a{' '}
-            <span className="font-data">@userinfobot</span> o mirando{' '}
-            <span className="font-data">getUpdates</span>).
+            El bot ya viene <b className="text-foreground">integrado</b> con los
+            datos de la empresa: no hace falta configurar nada. Los campos de
+            abajo solo sirven si algún día quieres usar{' '}
+            <b className="text-foreground">otro bot u otro chat</b> (créalo con{' '}
+            <b className="text-foreground">@BotFather</b>, comando{' '}
+            <span className="font-data">/newbot</span>; el chat ID se obtiene
+            con <span className="font-data">@userinfobot</span> o mirando{' '}
+            <span className="font-data">getUpdates</span>). Para volver al bot
+            integrado, vacía ambos campos y guarda.
           </p>
 
           <label className="flex flex-col gap-1">
             <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
-              Token del bot
+              Token del bot (integrado)
             </span>
             <input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="123456:ABC-DEF…"
+              placeholder="Vacío = bot integrado de la empresa"
               autoComplete="off"
               className={inputCls}
             />
@@ -86,13 +89,13 @@ export function SettingsDialog({
 
           <label className="flex flex-col gap-1">
             <span className="font-data text-xs uppercase tracking-wide text-muted-foreground">
-              Chat ID del manager
+              Chat ID del manager (integrado)
             </span>
             <input
               type="text"
               value={chatId}
               onChange={(e) => setChatId(e.target.value)}
-              placeholder="-100123456789"
+              placeholder="Vacío = chat integrado de la empresa"
               autoComplete="off"
               className={inputCls}
             />
@@ -119,8 +122,8 @@ export function SettingsDialog({
           <button
             onClick={() => {
               onSave({
-                botToken: token,
-                chatId: chatId,
+                botToken: token.trim(),
+                chatId: chatId.trim(),
                 managerUrl: managerUrl.trim(),
               });
               onClose();
@@ -131,8 +134,9 @@ export function SettingsDialog({
           </button>
 
           <p className="font-data text-xs text-muted-foreground leading-relaxed">
-            El token se guarda solo en este dispositivo (navegador) y se envía
-            directamente a la API de Telegram, sin pasar por ningún servidor.
+            Si personalizas el token, se guarda solo en este dispositivo
+            (navegador) y se envía directamente a la API de Telegram, sin pasar
+            por ningún servidor.
           </p>
         </div>
       </div>
