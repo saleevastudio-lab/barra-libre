@@ -6,6 +6,7 @@ import {
   Plus,
   FileSpreadsheet,
   Pencil,
+  Trash2,
   UtensilsCrossed,
   Wine,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import {
 import { euroSlices, previewEvento, previewGrupo } from '@/lib/calc';
 import {
   createEvento,
+  deleteEvento,
   getGrupo,
   listEventos,
   subscribeGrupo,
@@ -57,7 +59,7 @@ function EstadoChip({ estado }: { estado: string }) {
 /**
  * Vista de un grupo: datos del grupo (manager) + lista de eventos.
  * Cada evento es una pestaña del Excel; supervisores rellenan comida/bebida,
- * el manager rellena los datos económicos y genera el Excel del grupo.
+ * el manager rellena los datos económicos, elimina eventos y genera el Excel.
  */
 export function GroupView() {
   const { gid = '' } = useParams();
@@ -112,6 +114,20 @@ export function GroupView() {
       setError(e instanceof Error ? e.message : 'No se pudo crear el evento');
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** Manager: elimina un evento tras confirmarlo (sus datos se pierden). */
+  const removeEvento = async (ev: EventoDraft) => {
+    const etiqueta = ev.nombre?.trim() || `Evento ${ev.orden}`;
+    if (!window.confirm(`¿Eliminar «${etiqueta}»? Se perderán todos sus datos.`)) return;
+    setError(null);
+    try {
+      await deleteEvento(ev.id);
+      setEventos((evs) => (evs ? evs.filter((e) => e.id !== ev.id) : evs));
+      setNotice(`Evento «${etiqueta}» eliminado.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo eliminar el evento');
     }
   };
 
@@ -332,7 +348,19 @@ export function GroupView() {
                             : ''}
                         </p>
                       </div>
-                      <EstadoChip estado={p.estado} />
+                      <div className="flex items-center gap-2 shrink-0">
+                        <EstadoChip estado={p.estado} />
+                        {isManager && (
+                          <button
+                            onClick={() => removeEvento(ev)}
+                            aria-label={`Eliminar ${ev.nombre || `Evento ${ev.orden}`}`}
+                            title="Eliminar evento"
+                            className="h-8 w-8 inline-flex items-center justify-center border border-border text-muted-foreground hover:text-destructive hover:border-destructive transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Link
