@@ -82,6 +82,9 @@ export async function generateExcel(
   }
   rs.getCell('L6').value = grupo.fechaAnalisis ? toDate(grupo.fechaAnalisis) : null;
   rs.getCell('L6').numFmt = 'dd/mm/yyyy';
+  // Fechas del detalle por evento (E14:E21 traen formato mm-dd-yy en la
+  // plantilla): mismo formato español para que se lean bien.
+  for (let r = 14; r <= 21; r++) rs.getCell(`E${r}`).numFmt = 'dd/mm/yyyy';
   rs.getCell('B35').value = grupo.observaciones || null;
 
   // ---------- Eventos ----------
