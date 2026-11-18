@@ -159,6 +159,10 @@ export function GroupView() {
     setError(null);
     setNotice(null);
     setExcelUrl(null);
+    // Abrir Excel web directamente: la pestaña se abre en el propio clic
+    // (antes de las esperas de red) para que el navegador no la bloquee
+    // como ventana emergente. Si aun así se bloquea, queda el botón verde.
+    const excelTab = window.open('', '_blank');
     try {
       // Avisos de datos relevantes que faltan (no bloquean la generación).
       const avisos: string[] = [];
@@ -181,13 +185,21 @@ export function GroupView() {
       a.download = excelFileName(grupo);
       a.click();
       URL.revokeObjectURL(a.href);
-      const url = await uploadExcel(grupo.nombre || 'GRUPO', blob);
+      const url = await uploadExcel(gid, grupo.nombre || 'GRUPO', blob);
       setExcelUrl(url);
+      const webUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+      if (excelTab) {
+        // Navegar la pestaña abierta en el clic hacia el visor de Excel web.
+        excelTab.location.href = webUrl;
+      }
       setNotice(
         (avisos.length > 0 ? `Aviso: ${avisos.join(' · ')}. — ` : '') +
-          `Excel guardado en la nube: ${url}`,
+          (excelTab
+            ? `Excel guardado en la nube (se ha abierto en Excel web en una pestaña nueva): ${url}`
+            : `Excel guardado en la nube: ${url}`),
       );
     } catch (e) {
+      if (excelTab) excelTab.close();
       setError(e instanceof Error ? e.message : 'No se pudo generar el Excel');
     } finally {
       setBusy(false);
