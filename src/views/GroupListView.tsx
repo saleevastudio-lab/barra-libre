@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Plus, KeyRound, Settings as SettingsIcon } from 'lucide-react';
+import { Plus, KeyRound, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 import type { Grupo, TelegramSettings } from '@/lib/types';
-import { createGrupo, listGrupos, subscribeGrupos, supabaseConfigured } from '@/lib/supabase';
+import { createGrupo, deleteGrupo, listGrupos, subscribeGrupos, supabaseConfigured } from '@/lib/supabase';
 import { isManagerSession, loadSettings, saveSettings, setManagerSession } from '@/lib/store';
 import { Notice, ViewHeader } from '@/views/ui';
 import { PinDialog } from '@/views/PinDialog';
@@ -10,12 +10,13 @@ import { SettingsDialog } from '@/sections/SettingsDialog';
 
 /**
  * Pantalla de entrada: lista de grupos (un grupo = un Excel compartido).
- * El manager crea el grupo (nombre + fechas DESDE/HASTA; Nº OS opcional) y
- * los supervisores entran a rellenar consumiciones.
+ * El manager crea el grupo (nombre + fechas DESDE/HASTA; Nº OS opcional),
+ * elimina grupos y los supervisores entran a rellenar consumiciones.
  */
 export function GroupListView() {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [nombre, setNombre] = useState('');
   const [os, setOs] = useState('');
@@ -68,6 +69,26 @@ export function GroupListView() {
     }
   };
 
+  /** Manager: elimina un grupo completo tras confirmarlo. */
+  const removeGrupo = async (grupo: Grupo) => {
+    const etiqueta = grupo.nombre?.trim() || 'grupo';
+    if (
+      !window.confirm(
+        `¿Eliminar el grupo «${etiqueta}» y todos sus eventos? Esta acción no se puede deshacer.`,
+      )
+    )
+      return;
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteGrupo(grupo.id, grupo.nombre);
+      setGrupos((gs) => (gs ? gs.filter((x) => x.id !== grupo.id) : gs));
+      setNotice(`Grupo «${etiqueta}» eliminado.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo eliminar el grupo');
+    }
+  };
+
   return (
     <div className="min-h-dvh">
       <ViewHeader
@@ -102,6 +123,7 @@ export function GroupListView() {
           <Notice msg="Falta configurar Supabase (VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY) en el build. Sin ellas la app no puede guardar borradores." />
         )}
         {error && <Notice msg={error} />}
+        {notice && <Notice msg={notice} />}
 
         <section>
           {!isManager ? (
@@ -210,10 +232,10 @@ export function GroupListView() {
                   .filter(Boolean)
                   .join(' · ');
                 return (
-                <li key={g.id}>
+                <li key={g.id} className="flex items-stretch">
                   <Link
                     to={`/g/${g.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-4 hover:bg-foreground/5 transition-colors"
+                    className="flex-1 min-w-0 flex items-center justify-between gap-3 px-4 py-4 hover:bg-foreground/5 transition-colors"
                   >
                     <div className="min-w-0">
                       <p className="font-semibold uppercase truncate">
@@ -227,6 +249,16 @@ export function GroupListView() {
                       Abrir →
                     </span>
                   </Link>
+                  {isManager && (
+                    <button
+                      onClick={() => removeGrupo(g)}
+                      aria-label={`Eliminar ${g.nombre || 'grupo'}`}
+                      title="Eliminar grupo y todos sus eventos"
+                      className="px-4 border-l border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </li>
                 );
               })}
