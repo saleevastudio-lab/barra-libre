@@ -1,5 +1,6 @@
 import type { Workbook, Worksheet } from 'exceljs';
 import type { CostLine, EventoDraft, Grupo } from './types';
+import { lavanderiaResumen } from './calc';
 import {
   MAX_EVENTOS_POR_GRUPO,
   MAX_INGRESOS,
@@ -254,9 +255,17 @@ function fillEvento(ws: Worksheet, ev: EventoDraft): void {
   ws.getCell('C84').value = ev.personal.extraCocina || null;
   ws.getCell('C85').value = ev.personal.internoCocina || null;
 
-  // 5 · Costes varios (filas 90-98, conceptos fijos de la plantilla)
+  // 5 · Costes varios (filas 90-98, conceptos fijos de la plantilla).
+  // La fila 90 «Lavandería» se agrega desde el conteo de mantelería:
+  // cantidad = total de piezas, coste = precio medio ponderado.
+  const lav = lavanderiaResumen(ev.lavanderia ?? []);
   for (let i = 0; i < VARIOS_CONCEPTOS.length; i++) {
     const r = 90 + i;
+    if (i === 0 && lav.piezas > 0) {
+      ws.getCell(`C${r}`).value = lav.piezas;
+      ws.getCell(`D${r}`).value = lav.precioMedio;
+      continue;
+    }
     const v = ev.varios[i];
     ws.getCell(`C${r}`).value = v?.cantidad || null;
     ws.getCell(`D${r}`).value = v?.costeUnitario || null;
