@@ -43,13 +43,22 @@ export function LoginView({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="min-h-dvh flex items-center justify-center px-4">
       <main className="w-full max-w-sm border border-border bg-card/50 p-6 flex flex-col gap-4">
-        <div className="text-center">
-          <h1 className="font-bold tracking-tight uppercase text-xl">
-            Consumiciones
-          </h1>
-          <p className="font-data text-xs uppercase tracking-wide text-muted-foreground mt-1">
-            Hotel · eventos
-          </p>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-full bg-white rounded-xl px-6 py-4 flex items-center justify-center">
+            <img
+              src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAggAAACYCAYAAAB7huq0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAcSURBVHgB7cExAQAAAMKg9U9tCy8gAAAAAAAAAAAAAADgNSL0AAEH7JZmAAAAAElFTkSuQmCC"
+              alt="Kimpton Los Monteros Marbella"
+              className="w-full max-w-[260px] h-auto"
+            />
+          </div>
+          <div className="text-center">
+            <h1 className="font-bold tracking-tight uppercase text-xl">
+              Consumiciones
+            </h1>
+            <p className="font-data text-xs uppercase tracking-wide text-muted-foreground mt-1">
+              Control de consumiciones de eventos
+            </p>
+          </div>
         </div>
 
         <label className="flex flex-col gap-1">
