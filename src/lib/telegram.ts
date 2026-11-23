@@ -31,15 +31,23 @@ export async function sendTelegram(
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** Constancia de escandallo (comida o bebida) para el grupo de Telegram. */
+export type SeccionConstancia = 'comida' | 'bebida' | 'manteleria';
+
+/** Constancia de escandallo (comida, bebida o mantelería) para Telegram. */
 export function buildConstancia(
   grupo: Grupo,
   evento: EventoDraft,
-  seccion: 'comida' | 'bebida',
+  seccion: SeccionConstancia,
   lineas: { nombre: string; cantidad: number; coste: number | null; total: number }[],
   total: number,
+  registradoPor = '',
 ): string {
-  const titulo = seccion === 'comida' ? 'COMIDA (cocina)' : 'BEBIDA (barra)';
+  const titulo =
+    seccion === 'comida'
+      ? 'COMIDA (cocina)'
+      : seccion === 'bebida'
+        ? 'BEBIDA (barra)'
+        : 'MANTELERÍA (lavandería)';
   const rows = lineas
     .map(
       (l) =>
@@ -54,5 +62,8 @@ export function buildConstancia(
     rows || '(sin líneas)',
     '',
     `<b>Total: ${total.toFixed(2).replace('.', ',')} €</b>`,
-  ].join('\n');
+    registradoPor ? `Registrado por: ${esc(registradoPor)}` : '',
+  ]
+    .filter((l) => l !== '')
+    .join('\n');
 }
