@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
   ArrowLeft,
-  KeyRound,
   Plus,
   FileSpreadsheet,
   Pencil,
+  Shirt,
   Trash2,
   UtensilsCrossed,
   Wine,
@@ -27,10 +27,9 @@ import {
   uploadExcel,
 } from '@/lib/supabase';
 import { generateExcel, excelFileName } from '@/lib/excel';
-import { isManagerSession, setManagerSession } from '@/lib/store';
+import { isManagerSession } from '@/lib/store';
 import { eur, Notice, ViewHeader } from '@/views/ui';
 import { EuroChart } from '@/views/EuroChart';
-import { PinDialog } from '@/views/PinDialog';
 
 const ESTADO_LABEL: Record<string, string> = {
   'sin-ingresos': 'Sin ingresos',
@@ -59,8 +58,9 @@ function EstadoChip({ estado }: { estado: string }) {
 
 /**
  * Vista de un grupo: datos del grupo (manager) + lista de eventos.
- * Cada evento es una pestaña del Excel; supervisores rellenan comida/bebida,
- * el manager rellena los datos económicos, elimina eventos y genera el Excel.
+ * Cada evento es una pestaña del Excel; supervisores rellenan comida/bebida
+ * y mantelería, el manager rellena los datos económicos, elimina eventos y
+ * genera el Excel.
  */
 export function GroupView() {
   const { gid = '' } = useParams();
@@ -68,8 +68,7 @@ export function GroupView() {
   const [eventos, setEventos] = useState<EventoDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [isManager, setIsManager] = useState(() => isManagerSession());
-  const [pinOpen, setPinOpen] = useState(false);
+  const [isManager] = useState(() => isManagerSession());
   const [editOpen, setEditOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   /** URL pública del último Excel generado (para abrirlo en Excel web). */
@@ -263,15 +262,6 @@ export function GroupView() {
         subtitle={grupoDetalle || undefined}
         right={
           <>
-            {!isManager && (
-              <button
-                onClick={() => setPinOpen(true)}
-                aria-label="Acceso manager"
-                className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
-              >
-                <KeyRound className="h-4 w-4" />
-              </button>
-            )}
             {isManager && (
               <>
                 <button
@@ -444,6 +434,7 @@ export function GroupView() {
                           {ev.updatedAt
                             ? ` · act. ${new Date(ev.updatedAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
                             : ''}
+                          {ev.updatedBy ? ` · por ${ev.updatedBy}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -473,6 +464,12 @@ export function GroupView() {
                       >
                         <Wine className="h-4 w-4" /> Bebida
                       </Link>
+                      <Link
+                        to={`/g/${gid}/e/${ev.id}/lavanderia`}
+                        className="h-10 px-3 inline-flex items-center gap-2 border border-border font-data text-xs uppercase tracking-wide hover:border-primary hover:text-primary transition-colors"
+                      >
+                        <Shirt className="h-4 w-4" /> Mantelería
+                      </Link>
                       {isManager && (
                         <Link
                           to={`/g/${gid}/e/${ev.id}/manager`}
@@ -490,15 +487,6 @@ export function GroupView() {
         </section>
       </main>
 
-      <PinDialog
-        open={pinOpen}
-        onClose={() => setPinOpen(false)}
-        onSuccess={() => {
-          setManagerSession(true);
-          setIsManager(true);
-          setPinOpen(false);
-        }}
-      />
     </div>
   );
 }
