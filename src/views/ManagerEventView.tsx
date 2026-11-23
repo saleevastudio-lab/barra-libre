@@ -10,12 +10,11 @@ import type {
   VariosLine,
 } from '@/lib/types';
 import { MAX_INGRESOS, TIPOS_SERVICIO, VARIOS_CONCEPTOS } from '@/lib/catalog';
-import { euroSlices, previewEvento, type EventoPreview } from '@/lib/calc';
+import { euroSlices, lavanderiaResumen, previewEvento, type EventoPreview } from '@/lib/calc';
 import { getGrupo, listEventos, supabaseConfigured, updateEvento } from '@/lib/supabase';
 import { isManagerSession } from '@/lib/store';
 import { eur, Notice, ViewHeader } from '@/views/ui';
 import { EuroChart } from '@/views/EuroChart';
-import { PinDialog } from '@/views/PinDialog';
 
 const emptyIngreso = (): IncomeLine => ({
   concepto: '',
@@ -38,14 +37,14 @@ const ESTADO_TEXTO: Record<EventoPreview['estado'], string> = {
 
 /**
  * Datos del evento (solo manager): cabecera, ingresos, personal, varios y
- * vista previa del semáforo. Los supervisores solo tocan comida/bebida.
+ * vista previa del semáforo. Los supervisores solo tocan comida/bebida
+ * y mantelería.
  */
 export function ManagerEventView() {
   const { gid = '', eid = '' } = useParams();
   const [grupo, setGrupo] = useState<Grupo | null>(null);
   const [evento, setEvento] = useState<EventoDraft | null>(null);
-  const [isManager, setIsManager] = useState(() => isManagerSession());
-  const [pinOpen, setPinOpen] = useState(false);
+  const [isManager] = useState(() => isManagerSession());
 
   const [nombre, setNombre] = useState('');
   const [tipo, setTipo] = useState('');
@@ -110,6 +109,7 @@ export function ManagerEventView() {
         bebida: evento?.bebida ?? [],
         personal,
         varios,
+        lavanderia: evento?.lavanderia ?? [],
       }),
     [eid, gid, evento, nombre, tipo, fecha, duracion, mesas, ingresos, personal, varios],
   );
@@ -209,17 +209,11 @@ export function ManagerEventView() {
         {error && <Notice msg={error} />}
 
         {!isManager ? (
-          <section className="border border-border p-6 text-center flex flex-col gap-4">
+          <section className="border border-border p-6 text-center">
             <p className="text-sm text-muted-foreground">
               Los datos del evento los rellena el manager. Los supervisores
-              solo introducen consumiciones de comida y bebida.
+              solo introducen consumiciones de comida, bebida y mantelería.
             </p>
-            <button
-              onClick={() => setPinOpen(true)}
-              className="h-12 bg-primary text-primary-foreground font-data text-xs uppercase tracking-wide font-bold hover:opacity-90 transition-opacity cursor-pointer"
-            >
-              Soy manager — introducir PIN
-            </button>
           </section>
         ) : (
           <>
@@ -448,6 +442,24 @@ export function ManagerEventView() {
               <ul className="divide-y divide-border">
                 {VARIOS_CONCEPTOS.map((concepto, i) => {
                   const v = varios[i] ?? { cantidad: 0, costeUnitario: 0 };
+                  // La fila «Lavandería» se calcula sola desde el conteo de
+                  // mantelería (vista de supervisores): no se edita aquí.
+                  if (i === 0) {
+                    const lav = lavanderiaResumen(evento?.lavanderia ?? []);
+                    return (
+                      <li
+                        key={concepto}
+                        className="px-4 py-2.5 flex items-center gap-3 text-muted-foreground"
+                      >
+                        <span className="flex-1 text-sm">{concepto}</span>
+                        <span className="font-data text-xs">
+                          {lav.piezas > 0
+                            ? `${lav.piezas} pzas · media ${eur(lav.precioMedio)}/ud · ${eur(lav.coste)} (desde «Mantelería»)`
+                            : 'se calcula desde «Mantelería»'}
+                        </span>
+                      </li>
+                    );
+                  }
                   return (
                     <li key={concepto} className="px-4 py-2.5 flex items-center gap-3">
                       <span className="flex-1 text-sm">{concepto}</span>
@@ -530,14 +542,6 @@ export function ManagerEventView() {
         )}
       </main>
 
-      <PinDialog
-        open={pinOpen}
-        onClose={() => setPinOpen(false)}
-        onSuccess={() => {
-          setIsManager(true);
-          setPinOpen(false);
-        }}
-      />
     </div>
   );
 }
