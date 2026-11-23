@@ -118,3 +118,12 @@ export const RATE_INTERNO = 21.12;
 export const MAX_EVENTOS_POR_GRUPO = 8;
 export const MAX_INGRESOS = 6;
 export const MAX_LINEAS_ESCANDALLO = 25;
+
+/** Artículos de mantelería/lavandería por defecto (el manager puede añadir
+ *  más y fijar el precio por unidad de cada uno). */
+export const LAVANDERIA_DEFAULT: string[] = [
+  'Servilletas',
+  'Manteles',
+  'Pasillos',
+  'Manteles de lino',
+];
