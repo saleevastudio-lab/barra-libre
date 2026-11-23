@@ -1,7 +1,7 @@
 // Cálculo en cliente del resultado de un evento (vista previa del semáforo).
 // Replica la lógica de la hoja Evento de la plantilla; el Excel es la fuente
 // final (recalcula al abrirse).
-import type { CostLine, EventoDraft } from './types';
+import type { CostLine, EventoDraft, LavanderiaLine } from './types';
 import { RATE_EXTRA, RATE_INTERNO, TIPOS_SERVICIO, VARIOS_CONCEPTOS } from './catalog';
 
 export interface EventoPreview {
@@ -23,6 +23,23 @@ export interface EventoPreview {
 
 const IVA_DEFECTO = 0.1;
 const TOL_AMBAR = 0.05;
+
+/** Totales de mantelería: piezas, coste y precio medio ponderado. En el
+ *  Excel solo hay un apartado de lavandería, así que se agrega así. */
+export function lavanderiaResumen(lines: LavanderiaLine[]): {
+  piezas: number;
+  coste: number;
+  precioMedio: number;
+} {
+  let piezas = 0;
+  let coste = 0;
+  for (const l of lines) {
+    if (!l.item?.trim() || (l.cantidad ?? 0) <= 0) continue;
+    piezas += l.cantidad;
+    coste += l.cantidad * (l.precio || 0);
+  }
+  return { piezas, coste, precioMedio: piezas > 0 ? coste / piezas : 0 };
+}
 
 export function previewEvento(e: EventoDraft): EventoPreview {
   let bruta = 0;
@@ -49,10 +66,14 @@ export function previewEvento(e: EventoDraft): EventoPreview {
   const costePersonal =
     (p.extraSala + p.extraCocina) * RATE_EXTRA +
     (p.internoSala + p.internoCocina) * RATE_INTERNO;
-  const costeVarios = e.varios.reduce(
-    (a, l) => a + (l.cantidad || 0) * (l.costeUnitario || 0),
-    0,
-  );
+  // La lavandería no se suma desde varios[0] (lo calcula lavanderiaResumen
+  // desde el conteo de mantelería); el resto de varios sí suma normal.
+  const lav = lavanderiaResumen(e.lavanderia ?? []);
+  const costeVarios =
+    e.varios.reduce(
+      (a, l, i) => (i === 0 ? a : a + (l.cantidad || 0) * (l.costeUnitario || 0)),
+      0,
+    ) + lav.coste;
   const costeTotal = costeComida + costeBebida + costePersonal + costeVarios;
   const beneficio = neta - costeTotal;
   const margen = neta > 0 ? beneficio / neta : 0;
