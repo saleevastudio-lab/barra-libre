@@ -3,6 +3,7 @@
 // VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (GitHub Secrets en CI).
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { EventoDraft, Grupo } from './types';
+import { currentUserName } from './store';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -314,11 +315,15 @@ export async function updateEvento(
       | 'bebida'
       | 'personal'
       | 'varios'
+      | 'lavanderia'
     >
   >,
 ): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
-  const db: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const db: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    updated_by: currentUserName() || null,
+  };
   if (patch.nombre !== undefined) db.nombre = patch.nombre;
   if (patch.tipo !== undefined) db.tipo = patch.tipo;
   if (patch.fecha !== undefined) db.fecha = patch.fecha || null;
@@ -329,6 +334,7 @@ export async function updateEvento(
   if (patch.bebida !== undefined) db.bebida = patch.bebida;
   if (patch.personal !== undefined) db.personal = patch.personal;
   if (patch.varios !== undefined) db.varios = patch.varios;
+  if (patch.lavanderia !== undefined) db.lavanderia = patch.lavanderia;
   const { error } = await supabase.from('eventos').update(db).eq('id', id);
   if (error) throw new Error(error.message);
 }
@@ -433,33 +439,35 @@ export async function getExcelPublicUrl(grupoId: string): Promise<string | null>
   return `${url}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(name)}`;
 }
 
-// ---------- PIN manager ----------
+// ---------- Precios de mantelería (config) ----------
+// El manager fija el precio por unidad de cada artículo; se guardan en la
+// nube para que la próxima vez no haya que volver a ponerlos (y se pueden
+// editar cuando haya algún cambio).
 
-async function sha256(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(text),
-  );
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+const LAVANDERIA_PRECIOS_KEY = 'lavanderia_precios';
+
+export async function getLavanderiaPrecios(): Promise<Record<string, number>> {
+  if (!supabase) return {};
+  const raw = await readConfigValue(LAVANDERIA_PRECIOS_KEY).catch(() => null);
+  if (!raw) return {};
+  try {
+    const obj = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) out[k] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
-export async function getPinHash(): Promise<string | null> {
-  if (!supabase) return null;
-  return readConfigValue('pin_hash');
-}
-
-export async function setPin(pin: string): Promise<void> {
+export async function saveLavanderiaPrecios(
+  precios: Record<string, number>,
+): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado');
-  const hash = await sha256(pin);
-  await writeConfigValue('pin_hash', hash);
-}
-
-export async function verifyPin(pin: string): Promise<boolean> {
-  const stored = await getPinHash();
-  if (!stored) return false;
-  return (await sha256(pin)) === stored;
+  await writeConfigValue(LAVANDERIA_PRECIOS_KEY, JSON.stringify(precios));
 }
 
 // ---------- Mapeo filas → modelos ----------
@@ -497,6 +505,8 @@ function rowToEvento(r: Record<string, unknown>): EventoDraft {
       internoCocina: 0,
     },
     varios: (r.varios as EventoDraft['varios']) ?? [],
+    lavanderia: (r.lavanderia as EventoDraft['lavanderia']) ?? [],
+    updatedBy: (r.updated_by as string | null) ?? undefined,
     updatedAt: (r.updated_at as string | undefined) ?? undefined,
   };
 }
