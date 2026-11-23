@@ -5,7 +5,7 @@ import type { CostLine, EventoDraft, Grupo, TelegramSettings } from '@/lib/types
 import { DRINKS, MAX_EVENTOS_POR_GRUPO, MAX_LINEAS_ESCANDALLO, PLATOS, TIPOS_SERVICIO } from '@/lib/catalog';
 import { createEvento, getGrupo, listEventos, supabaseConfigured, updateEvento } from '@/lib/supabase';
 import { buildConstancia, sendTelegram } from '@/lib/telegram';
-import { loadSettings } from '@/lib/store';
+import { currentUserName, loadSettings } from '@/lib/store';
 import { eur, Notice, ViewHeader } from '@/views/ui';
 
 type Kind = 'comida' | 'bebida';
@@ -15,8 +15,8 @@ type Kind = 'comida' | 'bebida';
  * Los supervisores rellenan solo cantidades; el coste se toma del catálogo
  * automáticamente (los refrescos y zumos pueden contarse por cajas de 24).
  */
-export function EscandalloView() {
-  const { gid = '', eid = '', kind = 'comida' } = useParams();
+export function EscandalloView({ kind }: { kind?: Kind }) {
+  const { gid = '', eid = '' } = useParams();
   const navigate = useNavigate();
   const seccion: Kind = kind === 'bebida' ? 'bebida' : 'comida';
 
@@ -167,7 +167,7 @@ export function EscandalloView() {
         }));
       await sendTelegram(
         settings,
-        buildConstancia(grupo, evento, seccion, conTotal, total),
+        buildConstancia(grupo, evento, seccion, conTotal, total, currentUserName()),
       );
       showNotice('Constancia enviada a Telegram.');
     } catch (e) {
