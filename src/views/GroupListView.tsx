@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Plus, KeyRound, Settings as SettingsIcon, Trash2 } from 'lucide-react';
+import { Plus, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 import type { Grupo, TelegramSettings } from '@/lib/types';
 import { createGrupo, deleteGrupo, listGrupos, subscribeGrupos, supabaseConfigured } from '@/lib/supabase';
-import { isManagerSession, loadSettings, saveSettings, setManagerSession } from '@/lib/store';
+import { isManagerSession, loadSettings, saveSettings } from '@/lib/store';
 import { Notice, ViewHeader } from '@/views/ui';
-import { PinDialog } from '@/views/PinDialog';
 import { SettingsDialog } from '@/sections/SettingsDialog';
 
 /**
@@ -23,8 +22,7 @@ export function GroupListView() {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [busy, setBusy] = useState(false);
-  const [pinOpen, setPinOpen] = useState(false);
-  const [isManager, setIsManager] = useState(() => isManagerSession());
+  const [isManager] = useState(() => isManagerSession());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<TelegramSettings>(() => loadSettings());
   const navigate = useNavigate();
@@ -96,15 +94,6 @@ export function GroupListView() {
         subtitle="Grupos / eventos"
         right={
           <>
-            {!isManager && (
-              <button
-                onClick={() => setPinOpen(true)}
-                aria-label="Acceso manager"
-                className="h-9 w-9 inline-flex items-center justify-center border border-border hover:bg-foreground hover:text-background transition-colors cursor-pointer"
-              >
-                <KeyRound className="h-4 w-4" />
-              </button>
-            )}
             {isManager && (
               <button
                 onClick={() => setSettingsOpen(true)}
@@ -128,8 +117,8 @@ export function GroupListView() {
         <section>
           {!isManager ? (
             <p className="border border-dashed border-border px-4 py-4 font-data text-xs uppercase tracking-wide text-muted-foreground text-center">
-              Crear grupos es tarea del manager (icono de la llave arriba a
-              la derecha). Los supervisores solo rellenan consumiciones de los
+              Crear grupos es tarea del manager (entra con el código de
+              manager). Los supervisores solo rellenan consumiciones de los
               grupos existentes.
             </p>
           ) : (
@@ -267,15 +256,6 @@ export function GroupListView() {
         </section>
       </main>
 
-      <PinDialog
-        open={pinOpen}
-        onClose={() => setPinOpen(false)}
-        onSuccess={() => {
-          setManagerSession(true);
-          setIsManager(true);
-          setPinOpen(false);
-        }}
-      />
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
