@@ -38,6 +38,14 @@ export interface VariosLine {
   costeUnitario: number;
 }
 
+/** Línea de mantelería/lavandería: conteo de un artículo con su precio. */
+export interface LavanderiaLine {
+  item: string;
+  cantidad: number;
+  /** Precio por unidad (se guarda con el conteo; el manager lo mantiene). */
+  precio: number;
+}
+
 /** Borrador de un evento (una pestaña del Excel del grupo). */
 export interface EventoDraft {
   id: string;
@@ -54,6 +62,10 @@ export interface EventoDraft {
   bebida: CostLine[];
   personal: PersonalDraft;
   varios: VariosLine[];
+  /** Conteo de mantelería (servilletas, manteles, pasillos…). */
+  lavanderia: LavanderiaLine[];
+  /** Nombre de la última persona que guardó el evento. */
+  updatedBy?: string;
   updatedAt?: string;
 }
 
