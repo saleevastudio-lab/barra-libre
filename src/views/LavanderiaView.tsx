@@ -7,7 +7,7 @@ import type {
   LavanderiaLine,
   TelegramSettings,
 } from '@/lib/types';
-import { LAVANDERIA_DEFAULT } from '@/lib/catalog';
+import { LAVANDERIA_DEFAULT, LAVANDERIA_TARIFAS } from '@/lib/catalog';
 import { lavanderiaResumen } from '@/lib/calc';
 import {
   getGrupo,
@@ -44,6 +44,8 @@ export function LavanderiaView() {
   const [nuevoItem, setNuevoItem] = useState('');
   const [nuevoPrecio, setNuevoPrecio] = useState('');
   const loadedRef = useRef(false);
+  const initialLinesRef = useRef<LavanderiaLine[]>([]);
+  const pendingPricesRef = useRef(new Map<string, number>());
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showNotice = (msg: string) => {
@@ -57,7 +59,8 @@ export function LavanderiaView() {
     saved: LavanderiaLine[],
     preciosMap: Record<string, number>,
   ): LavanderiaLine[] => {
-    const items: string[] = [...LAVANDERIA_DEFAULT];
+    const tarifas = new Map(LAVANDERIA_TARIFAS.map(({ item, precio }) => [item, precio]));
+    const items = [...new Set([...LAVANDERIA_DEFAULT, ...tarifas.keys()])];
     for (const k of Object.keys(preciosMap)) {
       if (!items.includes(k)) items.push(k);
     }
@@ -66,7 +69,10 @@ export function LavanderiaView() {
       return {
         item,
         cantidad: sv?.cantidad ?? 0,
-        precio: sv?.precio ?? preciosMap[item] ?? 0,
+        precio:
+          sv && sv.cantidad > 0
+            ? sv.precio
+            : preciosMap[item] || tarifas.get(item) || sv?.precio || 0,
       };
     });
     for (const sv of saved) {
@@ -77,6 +83,7 @@ export function LavanderiaView() {
 
   useEffect(() => {
     loadedRef.current = false;
+    pendingPricesRef.current = new Map();
     if (!supabaseConfigured) return;
     let alive = true;
     getGrupo(gid).then((g) => alive && setGrupo(g));
@@ -86,7 +93,9 @@ export function LavanderiaView() {
         const ev = evs.find((e) => e.id === eid);
         setEvento(ev ?? null);
         setPrecios(preciosMap);
-        setLines(buildLines(ev?.lavanderia ?? [], preciosMap));
+        const initialLines = buildLines(ev?.lavanderia ?? [], preciosMap);
+        initialLinesRef.current = initialLines;
+        setLines(initialLines);
         loadedRef.current = true;
       })
       .catch((e) => alive && setError(e instanceof Error ? e.message : 'Error de carga'));
@@ -96,8 +105,12 @@ export function LavanderiaView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gid, eid]);
 
-  const setLine = (i: number, patch: Partial<LavanderiaLine>) =>
+  const setLine = (i: number, patch: Partial<LavanderiaLine>) => {
+    if (patch.precio !== undefined) {
+      pendingPricesRef.current.set(lines[i].item, patch.precio);
+    }
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  };
 
   const resumen = useMemo(() => lavanderiaResumen(lines), [lines]);
   const sinPrecio = useMemo(
@@ -111,7 +124,7 @@ export function LavanderiaView() {
     setError(null);
     try {
       const limpias = lines.filter(
-        (l) => l.item.trim() !== '' && (l.cantidad > 0 || l.precio > 0),
+        (l) => l.item.trim() !== '' && l.cantidad > 0,
       );
       await updateEvento(evento.id, { lavanderia: limpias });
       setSaveState('saved');
@@ -123,7 +136,7 @@ export function LavanderiaView() {
 
   // Autoguardado del conteo (600 ms después de la última pulsación).
   useEffect(() => {
-    if (!loadedRef.current || !evento) return;
+    if (!loadedRef.current || !evento || lines === initialLinesRef.current) return;
     const t = setTimeout(persist, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,19 +148,16 @@ export function LavanderiaView() {
     if (!loadedRef.current || !isManager || !supabaseConfigured) return;
     const t = setTimeout(async () => {
       try {
-        const map: Record<string, number> = { ...precios };
-        let changed = false;
-        for (const l of lines) {
-          if (!l.item.trim()) continue;
-          if (map[l.item] !== l.precio) {
-            map[l.item] = l.precio;
-            changed = true;
-          }
+        const pending = pendingPricesRef.current;
+        if (pending.size === 0) return;
+        const edited = new Map(pending);
+        const map = { ...precios, ...Object.fromEntries(edited) };
+        await saveLavanderiaPrecios(map);
+        if (pendingPricesRef.current !== pending) return;
+        for (const [item, precio] of edited) {
+          if (pending.get(item) === precio) pending.delete(item);
         }
-        if (changed) {
-          await saveLavanderiaPrecios(map);
-          setPrecios(map);
-        }
+        setPrecios(map);
       } catch {
         /* los precios se reintentan en la próxima edición */
       }
@@ -165,6 +175,7 @@ export function LavanderiaView() {
     }
     const precio = Math.max(0, Number(nuevoPrecio.replace(',', '.')) || 0);
     setError(null);
+    pendingPricesRef.current.set(item, precio);
     setLines((ls) => [...ls, { item, cantidad: 0, precio }]);
     setNuevoItem('');
     setNuevoPrecio('');
@@ -174,6 +185,7 @@ export function LavanderiaView() {
     const item = lines[i]?.item;
     setLines((ls) => ls.filter((_, j) => j !== i));
     if (item) {
+      pendingPricesRef.current.delete(item);
       setPrecios((p) => {
         const next = { ...p };
         delete next[item];
