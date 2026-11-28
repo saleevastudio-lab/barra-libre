@@ -127,3 +127,16 @@ export const LAVANDERIA_DEFAULT: string[] = [
   'Pasillos',
   'Manteles de lino',
 ];
+
+/** Tarifas por pieza del proveedor. El ID corresponde al listado de prendas. */
+export const LAVANDERIA_TARIFAS = [
+  { id: '130207', item: 'Mantel redondo pequeño', precio: 1.50 },
+  { id: '130208', item: 'Mantel cuadrado pequeño', precio: 0.36 },
+  { id: '130209', item: 'Servilletas', precio: 0.21 },
+  { id: '130249', item: 'Funda de silla', precio: 1.25 },
+  { id: '130250', item: 'Mantel cuadrado mediano lino', precio: 1.52 },
+  { id: '130251', item: 'Mantel grande rectangular', precio: 1.52 },
+  { id: '130252', item: 'Cubre bandeja', precio: 0.21 },
+  { id: '130777', item: 'Cubre mantel (redondo mediano)', precio: 1.52 },
+  { id: '130894', item: 'Mantel redondo grande', precio: 2.05 },
+];
