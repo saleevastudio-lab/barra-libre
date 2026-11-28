@@ -119,14 +119,8 @@ export const MAX_EVENTOS_POR_GRUPO = 8;
 export const MAX_INGRESOS = 6;
 export const MAX_LINEAS_ESCANDALLO = 25;
 
-/** Artículos de mantelería/lavandería por defecto (el manager puede añadir
- *  más y fijar el precio por unidad de cada uno). */
-export const LAVANDERIA_DEFAULT: string[] = [
-  'Servilletas',
-  'Manteles',
-  'Pasillos',
-  'Manteles de lino',
-];
+/** Nombres genéricos de los recuentos anteriores al catálogo del proveedor. */
+export const LAVANDERIA_ANTERIORES = ['Manteles', 'Pasillos', 'Manteles de lino'];
 
 /** Tarifas por pieza del proveedor. El ID corresponde al listado de prendas. */
 export const LAVANDERIA_TARIFAS = [

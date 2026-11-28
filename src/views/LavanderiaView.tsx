@@ -7,7 +7,7 @@ import type {
   LavanderiaLine,
   TelegramSettings,
 } from '@/lib/types';
-import { LAVANDERIA_DEFAULT, LAVANDERIA_TARIFAS } from '@/lib/catalog';
+import { LAVANDERIA_ANTERIORES, LAVANDERIA_TARIFAS } from '@/lib/catalog';
 import { lavanderiaResumen } from '@/lib/calc';
 import {
   getGrupo,
@@ -60,9 +60,9 @@ export function LavanderiaView() {
     preciosMap: Record<string, number>,
   ): LavanderiaLine[] => {
     const tarifas = new Map(LAVANDERIA_TARIFAS.map(({ item, precio }) => [item, precio]));
-    const items = [...new Set([...LAVANDERIA_DEFAULT, ...tarifas.keys()])];
+    const items = [...tarifas.keys()];
     for (const k of Object.keys(preciosMap)) {
-      if (!items.includes(k)) items.push(k);
+      if (!items.includes(k) && !LAVANDERIA_ANTERIORES.includes(k)) items.push(k);
     }
     const out: LavanderiaLine[] = items.map((item) => {
       const sv = saved.find((l) => l.item === item);
@@ -76,7 +76,9 @@ export function LavanderiaView() {
       };
     });
     for (const sv of saved) {
-      if (!items.includes(sv.item)) out.push({ ...sv });
+      if (items.includes(sv.item)) continue;
+      if (LAVANDERIA_ANTERIORES.includes(sv.item) && sv.cantidad <= 0) continue;
+      out.push({ ...sv });
     }
     return out;
   };
@@ -304,87 +306,97 @@ export function LavanderiaView() {
         )}
 
         <ul className="flex flex-col gap-2">
-          {lines.map((l, i) => (
-            <li
-              key={`${l.item}-${i}`}
-              className="border border-border bg-card p-3 flex flex-col gap-2"
-            >
-              <div className="flex items-center gap-2">
-                <Shirt className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 min-w-0 font-semibold text-sm truncate">
-                  {l.item}
-                </span>
-                {isManager && (
-                  <button
-                    onClick={() => removeItem(i)}
-                    aria-label={`Quitar ${l.item}`}
-                    className="h-10 w-10 shrink-0 inline-flex items-center justify-center border border-border text-muted-foreground hover:text-destructive hover:border-destructive transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-data text-xs uppercase tracking-wide text-muted-foreground w-16">
-                  Cant.
-                </span>
-                {editingQty === i ? (
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    autoFocus
-                    defaultValue={l.cantidad || ''}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={(e) => {
-                      setLine(i, {
-                        cantidad: Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                      });
-                      setEditingQty(null);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                    className="w-20 h-10 px-1 text-center bg-background border border-primary font-data text-sm focus-visible:outline-none"
-                  />
-                ) : (
-                  <button
-                    onClick={() => setEditingQty(i)}
-                    className="w-16 h-10 text-center bg-background border border-input font-data text-sm hover:border-primary transition-colors cursor-pointer"
-                  >
-                    {l.cantidad}
-                  </button>
-                )}
-                <span className="font-data text-xs text-muted-foreground">unidades</span>
-                <span className="ml-6 font-data text-xs uppercase tracking-wide text-muted-foreground">
-                  Precio
-                </span>
-                {isManager ? (
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={l.precio || ''}
-                    placeholder="0,00"
-                    onChange={(e) =>
-                      setLine(i, {
-                        precio:
-                          e.target.value === '' ? 0 : Number(e.target.value),
-                      })
-                    }
-                    className="w-24 h-10 px-2 bg-background border border-input font-data text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                ) : (
-                  <span className="font-data text-sm w-24">
-                    {l.precio > 0 ? eur(l.precio) : '—'}
+          {lines.map((l, i) => {
+            const tarifa = LAVANDERIA_TARIFAS.find(({ item }) => item === l.item);
+            const anterior = LAVANDERIA_ANTERIORES.includes(l.item);
+            return (
+              <li
+                key={`${l.item}-${i}`}
+                className="border border-border bg-card p-3 flex flex-col gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <Shirt className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm">{l.item}</p>
+                    {tarifa && (
+                      <p className="font-data text-xs text-muted-foreground">{tarifa.id}</p>
+                    )}
+                    {anterior && (
+                      <p className="text-xs text-muted-foreground">Recuento anterior</p>
+                    )}
+                  </div>
+                  {isManager && (
+                    <button
+                      onClick={() => removeItem(i)}
+                      aria-label={`Quitar ${l.item}`}
+                      className="h-10 w-10 shrink-0 inline-flex items-center justify-center border border-border text-muted-foreground hover:text-destructive hover:border-destructive transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-data text-xs uppercase tracking-wide text-muted-foreground w-16">
+                    Cant.
                   </span>
-                )}
-                <span className="font-data text-xs text-muted-foreground">€ / ud</span>
-                <span className="ml-auto font-data text-sm">
-                  {l.cantidad > 0 && l.precio > 0 ? eur(l.cantidad * l.precio) : ''}
-                </span>
-              </div>
-            </li>
-          ))}
+                  {editingQty === i ? (
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      autoFocus
+                      defaultValue={l.cantidad || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        setLine(i, {
+                          cantidad: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        });
+                        setEditingQty(null);
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                      className="w-20 h-10 px-1 text-center bg-background border border-primary font-data text-sm focus-visible:outline-none"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setEditingQty(i)}
+                      className="w-16 h-10 text-center bg-background border border-input font-data text-sm hover:border-primary transition-colors cursor-pointer"
+                    >
+                      {l.cantidad}
+                    </button>
+                  )}
+                  <span className="font-data text-xs text-muted-foreground">unidades</span>
+                  <span className="ml-6 font-data text-xs uppercase tracking-wide text-muted-foreground">
+                    Precio
+                  </span>
+                  {isManager ? (
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={l.precio || ''}
+                      placeholder="0,00"
+                      onChange={(e) =>
+                        setLine(i, {
+                          precio:
+                            e.target.value === '' ? 0 : Number(e.target.value),
+                        })
+                      }
+                      className="w-24 h-10 px-2 bg-background border border-input font-data text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  ) : (
+                    <span className="font-data text-sm w-24">
+                      {l.precio > 0 ? eur(l.precio) : '—'}
+                    </span>
+                  )}
+                  <span className="font-data text-xs text-muted-foreground">€ / ud</span>
+                  <span className="ml-auto font-data text-sm">
+                    {l.cantidad > 0 && l.precio > 0 ? eur(l.cantidad * l.precio) : ''}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
         {isManager && (
